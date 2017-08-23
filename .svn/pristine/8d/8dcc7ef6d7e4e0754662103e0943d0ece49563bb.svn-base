@@ -1,0 +1,204 @@
+###    Code Terre_Plate    ###
+
+# Importation des modules necessaires :
+import sys
+from math import sin, cos, atan, pi,sqrt
+import numpy as np
+import matplotlib.pyplot as plt
+
+def qmul(Qb, Qc):
+    ''' Methode permettant de multiplier deux quaternions '''
+    Qa = Qc[0] * Qb
+    Qa[0] = Qa[0] - Qb[1]*Qc[1] - Qb[2]*Qc[2] - Qb[3]*Qc[3]
+    Qa[1] = Qa[1] + Qb[0]*Qc[1] + Qb[2]*Qc[3] - Qb[3]*Qc[2]
+    Qa[2] = Qa[2] + Qb[0]*Qc[2] + Qb[3]*Qc[1] - Qb[1]*Qc[3]
+    Qa[3] = Qa[3] + Qb[0]*Qc[3] + Qb[1]*Qc[2] - Qb[2]*Qc[1]
+    return Qa
+
+f = np.loadtxt('/home/alex/Documents/Alex projet Fusion/Données Phillipe/Immobile_Filtre2_90Pourcents.csv',
+               delimiter=',', usecols=(0, 1, 2, 3, 4, 5, 6, 7, 8))
+
+MAccX = f[:, 0] * 9.78
+MAccY = f[:, 1] * 9.78
+MAccZ = f[:, 2] * 9.78
+MGyroX = f[:, 3]*(2*pi/360)
+MGyroY = f[:, 4]*(2*pi/360)
+MGyroZ = f[:, 5]*(2*pi/360)
+MMagX = f[:, 6]
+MMagY = f[:, 7]
+MMagZ = f[:, 8]
+
+MAccX_moy = np.mean(MAccX)
+MAccY_moy = np.mean(MAccY)
+MAccZ_moy = np.mean(MAccZ)
+MGyroX_moy = np.mean(MGyroX)
+MGyroY_moy = np.mean(MGyroY)
+MGyroZ_moy = np.mean(MGyroZ)
+MMagX_moy = np.mean(MMagX)
+MMagY_moy = np.mean(MMagY)
+MMagZ_moy = np.mean(MMagZ)
+
+long_senseurs = np.size(MAccX)
+
+# Formatage des donnees senseurs
+for i in range(long_senseurs):
+    MGyroX[i] = MGyroX[i] - MGyroX_moy
+    MGyroY[i] = MGyroY[i] - MGyroY_moy
+    MGyroZ[i] = MGyroZ[i] - MGyroZ_moy
+
+# Formatage des donnees senseurs
+for j in range(long_senseurs):
+    MAccX[j] = (MAccX[j] - MAccX_moy)/4
+    MAccY[j] = (MAccY[j] - MAccY_moy)/4
+    MAccZ[j] = (MAccZ[j] - MAccZ_moy)/4+9.78
+ 
+# Fenetre de temps
+t_ech = 0.01
+tps = np.arange(t_ech, long_senseurs*t_ech, t_ech)
+nbre_pas = np.size(tps)
+weight = 0.05
+
+Pos = np.array([0, 0, 0])
+Pos = Pos[:, np.newaxis]
+Position = np.zeros((nbre_pas, 3))
+gama = 0
+theta = 0
+psi = 0
+Attitude_Gyr = np.zeros((3, 1))
+Attitude_Fused = np.zeros((3, 1))
+Attitude = np.zeros((nbre_pas, 3))
+
+# Vitesse earth dans repere navigation
+Vit = np.array([0, 0, 0])
+Vit = Vit[:, np.newaxis]
+Vitesse = np.zeros((nbre_pas, 3))
+
+# Increments acceleration
+incr_f_b = np.array([0, 0, 9.78])
+incr_f_b = incr_f_b[:, np.newaxis]
+# Increments gyro
+incr_w_nb_b = np.array([0, 0, 0])
+incr_w_nb_b = incr_w_nb_b[:, np.newaxis]
+
+# Matrice de passage de body a navigation
+C_b_n = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+# Vecteur rotation body par rapport plateforme dans body
+w_nb_b = np.array([0, 0, 0])
+w_nb_b = w_nb_b[:, np.newaxis]
+
+Tangage = []
+Roulis = []
+Cap = []
+Pos_x = []
+Pos_y = []
+Pos_z = []
+Vit_x = []
+Vit_y = []
+Vit_z = []
+
+#############################################################
+#Boucle principale d'iteration d'integration de la navigation
+#############################################################
+for k in range(nbre_pas):
+    vect_incr_body = np.array([MAccX[k], MAccY[k], MAccZ[k]])
+    Vecteur_Gravite = np.array([0, 0, -9.78])
+    Vecteur_Gravite = Vecteur_Gravite[:, np.newaxis]
+    AccMag_gama = atan(MAccY[k]/sqrt(MAccX[k]**2 + MAccZ[k]**2))
+    AccMag_theta = atan(MAccX[k] / sqrt(MAccY[k]**2 + MAccZ[k]**2 ))    
+    AccMag_psi = atan(MMagY[k]/MMagX[k])
+    Attitude_AccMag = np.array([[AccMag_gama], [AccMag_theta], [AccMag_psi]])
+
+    Attitude_Gyr[0] = Attitude_Gyr[0] + MGyroX[k]*t_ech
+    Attitude_Gyr[1] = Attitude_Gyr[1] + MGyroY[k]*t_ech
+    Attitude_Gyr[2] = Attitude_Gyr[2] + MGyroZ[k]*t_ech
+    
+    Attitude_Fused = (1-weight)*Attitude_Gyr + weight*Attitude_AccMag
+
+    # Tangage rotation autour de x_aile_droite
+    Attitude[0] = Attitude_Fused[0]
+    g = -Attitude_Fused[0] * (180/pi)
+    # Roulis rotation autour de y_devant
+    Attitude[1] = Attitude_Fused[1]
+    t = Attitude_Fused[1] * (180/pi)
+    # Cap rotation autour de z_up
+    Attitude[2] = Attitude_Fused[2]
+    p = Attitude_Fused[2] * (180/pi)
+
+    #print("Tangage = " + str(g[0]) + "  Roulis = " + str(t[0]) + "  Cap = " + str(p[0]) )    
+    # Passage en quaternions
+    q1 = sin(g/2)*sin(t/2)*sin(p/2) + cos(g/2)*cos(t/2)*cos(p/2)
+    q2 = sin(g/2)*cos(t/2)*cos(p/2) - cos(g/2)*sin(t/2)*sin(p/2)
+    q3 = sin(g/2)*cos(t/2)*sin(p/2) + cos(g/2)*sin(t/2)*cos(p/2)
+    q4 = -sin(g/2)*sin(t/2)*cos(p/2) + cos(g/2)*cos(t/2)*sin(p/2)
+    quat_q = np.array([q1, q2, q3, q4])
+    quat_q_conj = np.array([q1, -q2, -q3, -q4])
+
+    a = np.array([0.])
+    quat_incr_body = np.concatenate((a, vect_incr_body), axis=0)
+    quat_interm = qmul(quat_incr_body, quat_q_conj)
+    quat_incr_navig = qmul(quat_q, quat_interm)
+    vect_incr_navig = quat_incr_navig[1:4]
+    vect_incr_navig = vect_incr_navig[:, np.newaxis]
+    Vit = Vit + (vect_incr_navig + Vecteur_Gravite) * t_ech
+    Vitesse[0][0] = Vit[0][0]
+    Vitesse[0][1] = Vit[1][0]
+    Vitesse[0][2] = Vit[2][0]
+
+    # integration de la position
+    Pos = Pos + Vit * t_ech
+    Position[0][0] = Pos[0][0]
+    Position[0][1] = Pos[1][0]
+    Position[0][2] = Pos[2][0]
+
+    # Affichage valeur:
+    Tangage.append(g[0])
+    Roulis.append(t[0])
+    Cap.append(p[0])
+    Pos_x.append(Position[0][0])
+    Pos_y.append(Position[0][1])
+    Pos_z.append(Position[0][2])
+    Vit_x.append(Vitesse[0][0])
+    Vit_y.append(Vitesse[0][1])
+    Vit_z.append(Vitesse[0][2])
+
+plt.clf()
+plt.subplot(3, 3, 1)
+plt.plot(tps, Pos_x, color='red')
+plt.xlabel('Position_x', labelpad=1)
+plt.ylabel('Temps')
+plt.grid(True)
+plt.subplot(3, 3, 2)
+plt.plot(tps, Pos_y, color='red')
+plt.xlabel('Position_y', labelpad=-2)
+plt.grid(True)      
+plt.subplot(3, 3, 3)
+plt.plot(tps, Pos_z, color='red')
+plt.xlabel('Position_z', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 4)
+plt.plot(tps, Vit_x, color='blue')
+plt.xlabel('Vitesse_x', labelpad=1)
+plt.ylabel('Temps', labelpad=15)
+plt.grid(True)
+plt.subplot(3, 3, 5)
+plt.plot(tps, Vit_y, color='blue')
+plt.xlabel('Vitesse_y', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 6)
+plt.plot(tps, Vit_z, color='blue')
+plt.xlabel('Vitesse_z', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 7)
+plt.plot(tps, Tangage, color='green')
+plt.xlabel('Tangage', labelpad=1)
+plt.ylabel('Temps', labelpad=15)
+plt.grid(True)
+plt.subplot(3, 3, 8)
+plt.plot(tps, Roulis, color='green')
+plt.xlabel('Roulis', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 9)
+plt.plot(tps, Cap, color='green')
+plt.xlabel('Cap', labelpad=1)
+plt.grid(True)
+plt.show()

@@ -1,0 +1,86 @@
+###    Code Clef Dynamométrique   ###
+
+
+# Importation des modules necessaires :
+import sys
+from math import sin, cos, atan, pi, sqrt, atan2, acos
+import numpy as np
+import matplotlib.pyplot as plt
+import struct  #struct.unpack('motif_du_format_a_convertir', donnee) convertit C -> type Python
+import paho.mqtt.client as mqtt    #le as '' cree un alias (racourci)
+import base64  #contient les classes d'encodage et de decodage
+
+
+# Variable pour Mosquitto
+HOSTNAME = "localhost"
+TOPIC = "test/"
+SAMPLE_STACK_SIZE = 100
+NB_DATA_RECEIVED = 9   #car 9 echantillon dans le repere
+
+### Initialisation pour le calcul de l'Attitude
+t_ech = 0.0105042
+
+Angle = np.zeros((1,1))
+saveout = sys.stdout
+fsock = open('/home/alex/Documents/Alex projet Fusion/Données Phillipe/donnee_capteur_tps_reel.csv', 'w')
+m = 0
+
+def printData(samples):
+    global m, MGyroZ_l, MGyroZ_m
+    for sample in samples:                        
+        MGyroZ = sample[5]
+        if m < 100:
+            MGyroZ_l.append(MGyroZ)
+            MGyroZ_m = np.mean(MGyroZ_l)
+        if m > 100:
+            # Formatage des donnees senseurs   
+            MGyroZ = MGyroZ - MGyroZ_m
+            if abs(MGyroZ*t_ech) < 0.01:
+                Angle[0] = Angle[0]
+            else:
+                Angle[0] = Angle[0] + MGyroZ*t_ech
+
+            # Cap rotation autour de z_up
+            p = 1.1*Angle[0]
+            print("Cap = " + str(p[0]))
+            sys.stdout = fsock 
+            print(str(p[0]))
+            sys.stdout = saveout
+
+        m += 1
+        
+class Client():
+    def __init__(self):
+        self.client = mqtt.Client()
+        self.client.connect(HOSTNAME, 1883, 60)  #nom du serveur, port, tps de rep avant inactivite
+        self.client.subscribe(TOPIC)
+        self.client.on_message = self.on_message
+        self.client.loop_forever() #envoie continu
+
+    def on_message(self, client, userdata, msg):
+        global m, MGyroX_l, MGyroY_l, MGyroZ_l, MGyroX_m, MGyroY_m, MGyroZ_m
+        encoded_line = msg.payload   #contenu du message
+        decoded_line = base64.b64decode(encoded_line)  #encode le message pour le passer en base 64
+        dataCount = 0
+        sampleCount = 0
+        samples = list()  #cree automatiquement une nouvelle liste avec la classe liste
+        data = list()
+        nbre_paquet = 0
+        MGyroX_l = []
+        MGyroY_l = []
+        MGyroZ_l = []        
+        while sampleCount < SAMPLE_STACK_SIZE:
+            while dataCount < NB_DATA_RECEIVED:
+                startByte = sampleCount*NB_DATA_RECEIVED*4 + dataCount*4   #suite de 4 octects
+                stopByte = startByte + 4
+                data.append(struct.unpack("f", decoded_line[startByte:stopByte])[0])
+                dataCount += 1
+            dataCount = 0
+            samples.append(data[:])
+            data.clear()
+            sampleCount += 1
+        printData(samples)
+        samples.clear()
+
+if __name__ == '__main__':
+    client = Client()

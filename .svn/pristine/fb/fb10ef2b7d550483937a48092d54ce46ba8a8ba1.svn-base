@@ -1,0 +1,22 @@
+import numpy as np
+import tensorflow as tf
+
+import matplotlib.pyplot as plt
+
+
+def gen_sin(nb_chunks, frequency, phase, seq_len):
+
+	fs = 50 # sample rate 
+
+	time = np.arange(fs) # the points on the x axis for plotting
+
+	# compute the value (amplitude) of the sin wave at the for each sample
+	chunk_x = [ np.sin(2*np.pi*frequency * (i/fs)) for i in np.arange(fs) ]
+	chunk_y = [ np.sin(2*np.pi*frequency * (i/fs) + p) for i in np.arange(fs) ]
+
+	# create dataset
+
+
+
+
+seq_len = 5

@@ -1,0 +1,33 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def gen_sin(nb_chunks, frequency=2, phase=20):
+	'''
+		Generate 2 sin :
+			x for input data 
+			y for target data
+
+		Number of point in arrays = nb_chunk * fs
+	'''
+	fs = 100 # sample rate 
+	time = np.arange(fs) 
+
+	# compute the value (amplitude) of the sin wave at the for each sample
+	x = [ np.sin(2*np.pi*frequency * (i/fs)) for i in np.arange(fs * nb_chunks) ]
+	y = [ np.sin(2*np.pi*frequency * (i/fs)) for i in np.arange(phase, (fs * nb_chunks) + phase, 1) ]
+	
+	return np.asarray(x), np.asarray(y) 
+
+
+
+if __name__ == '__main__':
+	
+	# Get data 
+	X, Y = gen_sin(nb_chunks=20)
+	time = np.arange(X.shape[0])
+
+	# Plot curves
+	plt.plot(time[:500], X[:500])
+	plt.plot(time[:500], Y[:500])
+	plt.show()

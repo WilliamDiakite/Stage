@@ -1,0 +1,216 @@
+# Autoencoder Class
+# Single hidden layer autoencoder 
+
+import numpy as np
+import tensorflow as tf
+
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import roc_curve, auc
+
+from math import floor
+
+
+
+class Autoencoder(object):
+
+	def __init__(self, name, n_input, learning_rate, hidden_size, transfer_function=tf.nn.sigmoid, optimizer=tf.train.AdamOptimizer()):
+		
+		#--- Model parameters
+		self.n_input 		= n_input
+		self.n_hidden 		= hidden_size
+		self.n_output		= n_input
+		self.learning_rate 	= learning_rate
+		self.transfer 		= transfer_function
+		self.optimizer		= optimizer
+		self.name 			= name
+
+		#--- Input data
+		self.input = tf.placeholder('float', [None, self.n_input])
+
+
+		#--- Init weights and biases
+		self.weights = {
+			'h'	: tf.Variable(tf.random_normal([self.n_input, self.n_hidden]))
+		}
+
+		self.biases = {
+			'h'	: tf.Variable(tf.random_normal([self.n_hidden])),
+			'o' : tf.Variable(tf.random_normal([self.n_input]))	
+		}
+
+		#--- Encode hidden layer with sigmoid activation
+		self.encoded = self.transfer(tf.add(tf.matmul(self.input, self.weights['h']), self.biases['h']))
+
+		#--- Decode hidden layer with sigmoid activation
+		#--- TIED WEIGHTS
+		self.decoded = self.transfer(tf.add(tf.matmul(self.encoded, tf.transpose(self.weights['h'])), self.biases['o']))
+
+
+		#--- Cost function
+		self.cost = tf.reduce_mean(tf.pow(self.input - self.decoded, 2))
+
+		#--- Define optimizer
+		self.optimizer = optimizer.minimize(self.cost)
+
+
+		self.sess = tf.Session()
+		self.sess.run(tf.global_variables_initializer())
+		self.saver = tf.train.Saver()
+
+
+	def restore(self, path):
+		# Restore variables from disk.
+		  self.saver.restore(self.sess, path)
+		  print("[ + ] Model restored.")
+
+
+	def partial_fit(self, X):
+		'''
+			Feed a batch to the model 
+			and update weights and biases
+
+			Return :
+				cost : average cost for batch X
+		'''
+		cost, opt = self.sess.run((self.cost, self.optimizer), feed_dict={self.input:X})
+		return cost
+		
+		
+	def partial_test(self, X):
+		return self.sess.run(self.cost, feed_dict={self.input:X})
+
+
+	def train(self, X, validation_set=None, batch_size=50, training_epochs=20, display_step=1):
+		'''
+			Train model with dataset X
+
+			Return :
+				train_cost : store average loss per train batch
+				val_cost : store average loss for validation set
+		'''
+		val_cost = []
+		train_cost = []
+
+		# Training cycle
+		for epoch in range(training_epochs):
+			avg_cost = 0.
+			total_batch = int(X.shape[0] / batch_size)
+			current_pos = 0
+
+			# Loop over all batches
+			for i in range(total_batch):
+				batch_xs = X[current_pos:current_pos+batch_size,:]
+
+				# Fit training using batch data
+				cost = self.partial_fit(batch_xs)
+
+				# Compute average loss for the batch
+				avg_cost += cost / X.shape[0] * batch_size
+				
+				# Update batch position
+				current_pos = current_pos+batch_size
+
+			# Display logs per epoch step
+			if epoch % display_step == 0:
+				print("--- Epoch:", '%04d' % (epoch+1), 
+				"\nTraining cost =", "{:.9f}".format(avg_cost))
+				
+				if validation_set is not None:
+					print("Validation :")
+					val_avg_cost, _ = self.test(validation_set)
+					val_cost.append(val_avg_cost)
+					train_cost.append(avg_cost)
+
+		# save model
+		file = 'Generated_files/Models/'+self.name+'.ckpt'
+		save_path = self.saver.save(self.sess, file)
+		print('[ + ] Model parameters have been saved')
+
+		return train_cost, val_cost
+					
+
+	def test(self, X, batch_size=50, display_step=1): 
+		'''
+			Test model with dataset X 
+			and compute average loss
+
+			Return :
+				avg_cost : average loss for dataset X
+				cost_array: store average loss per batch
+		'''
+		cost_array = []
+
+		avg_cost = 0.
+		total_batch = int(X.shape[0] / batch_size)
+		current_pos = 0
+
+		# Loop over all batches
+		for i in range(total_batch):
+			batch_xs = X[current_pos:current_pos+batch_size,:]
+
+			# Fit training using batch data
+			cost = self.partial_test(batch_xs)
+			cost_array.append(cost)
+
+			# Compute average loss for the batch
+			avg_cost += cost / X.shape[0] * batch_size
+
+			# Update batch position
+			current_pos = current_pos+batch_size
+
+		print("cost =", "{:.9f}".format(avg_cost))
+		return avg_cost, cost_array
+		
+
+	def predict(self, X, threshold):
+		'''
+			If the prediction error > threshold, 
+			sample is considered abnormal
+		'''
+		predictions = []
+		
+		for i in range(X.shape[0]):
+			sample = np.reshape(X[i,:], (1,X.shape[1]))
+			cost = self.partial_test(sample)
+
+			if cost > threshold:
+				predictions.append(1)
+			else:
+				predictions.append(0)
+		return predictions
+
+
+	def random_split(self, dataX, dataY):
+		'''
+			Selects random samples from 
+			normal and anomalous datasets
+
+			Return :
+				dataX : shuffled normal set
+				dataY : shuffled anomalous set
+		'''
+		n_sampleX = int(dataX.shape[0]*1)
+		n_sampleY = int(dataY.shape[0]*1)
+
+		print('Number of normal samples :', n_sampleX)
+		print('Number of anomalous samples :', n_sampleY)
+
+		np.random.shuffle(dataX)
+		np.random.shuffle(dataY)
+
+		return dataX[0:n_sampleX,:], dataY[0:n_sampleY,:]
+
+
+	def score(self, test_data, test_class, threshold):
+		print('[...] Computing model score on test_data')
+
+		predictions = self.predict(test_data, threshold)
+		precision = 0
+		
+		for i in range(len(test_class)):
+			if test_class[i] == predictions[i]:
+				precision = precision+1
+		precision = (100*precision)/len(test_class)
+
+		print('[ + ] Precision :', precision)

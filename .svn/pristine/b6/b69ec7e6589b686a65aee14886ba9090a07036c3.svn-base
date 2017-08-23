@@ -1,0 +1,261 @@
+### Code Terre_ellipsoide ###
+
+# Importation des modules nécéssaires :
+import numpy as np
+from math import sin, cos, tan, asin, acos, atan, atan2, pi
+import matplotlib.pyplot as plt
+
+
+def qmul(Qb,Qc):
+    Qa = Qc[0][0] * Qb
+    Qa[0][0] = Qa[0][0] - Qb[0][1]*Qc[0][1] - Qb[0][2]*Qc[0][2] - Qb[0][3]*Qc[0][3] 
+    Qa[0][1] = Qa[0][1] + Qb[0][0]*Qc[0][1] + Qb[0][2]*Qc[0][3] - Qb[0][3]*Qc[0][2] 
+    Qa[0][2] = Qa[0][2] + Qb[0][0]*Qc[0][2] + Qb[0][3]*Qc[0][1] - Qb[0][1]*Qc[0][3] 
+    Qa[0][3] = Qa[0][3] + Qb[0][0]*Qc[0][3] + Qb[0][1]*Qc[0][2] - Qb[0][2]*Qc[0][1] 
+    return Qa
+
+def Qconj(Qb):
+    Qa = np.array([0,0,0,0.])
+    Qa = Qa[np.newaxis,:]
+    Qa[0][0] = Qb[0][0]
+    Qa[0][1] = -Qb[0][1]
+    Qa[0][2] = -Qb[0][2]
+    Qa[0][3] = -Qb[0][3]
+    return Qa
+
+# Fenetre de temps :
+t_ech = 0.1
+tps = np.arange(t_ech,7200,t_ech)        
+nbre_pas = np.size(tps)
+
+# Constantes
+wie = 7.2921151467E-5  #rad/s
+exent = 0.00335281066475   
+Rzero = 6378140
+
+a1=9.7803267714  #m/s²
+a2=0.0052790414 # sans unite
+a3=0.0000232718 # sans unite
+a4=-0.0000030876910891 # /s²
+a5=0.0000000043977311 # /s²
+a6=0.0000000000007211 # /ms²
+
+
+###  Initialisation des variables  ###
+
+# Variables position, attitude et vitesse:
+lamda = 0
+phi = 0
+alt = 0
+Postion = np.zeros((nbre_pas, 3))
+
+gama = 0
+theta = 0
+psi = 0
+Attitude = np.zeros((nbre_pas, 3))
+
+# Vitesse earth dans repère navigationQconj
+v_e_n = np.array([0,0,1.])
+v_e_n = v_e_n[np.newaxis,:]
+Vitesse = np.zeros((nbre_pas, 3))
+
+# Incréments accélération
+incr_f_b= np.array([0, 0, 0.])
+incr_f_b = incr_f_b[:, np.newaxis]
+# Incréménts gyro
+incr_w_ib_b = np.array([0, wie * 1.1, 0.])
+incr_w_ib_b = incr_w_ib_b[:, np.newaxis]
+incr_w_ib_b = incr_w_ib_b * 1.0
+quat_incr_w_ib_b = np.array([0, 0, wie * 1.1, 0.])
+quat_incr_w_ib_b = quat_incr_w_ib_b * 1.0
+
+# Matrice de passage de body à navigation
+C_b_n = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1.]])
+# Quaternion de rotation de body à navigation
+quat_C_n_b = np.array([1, 0, 0, 0.])
+quat_C_n_b = quat_C_n_b[np.newaxis,:]
+quat_C_b_n = Qconj(quat_C_n_b)
+
+# Matrice de passage de earth à navigation
+C_e_n = np.array([[0, 1, 0],[0, 0, 1],[1, 0, 0.]])
+C_n_e = C_e_n.T
+quat_C_e_n = np.array([0.5, 0.5, 0.5, 0.5])
+quat_C_e_n = quat_C_e_n[np.newaxis,:]
+quat_C_n_e = Qconj(quat_C_e_n)
+
+# Vecteur rotation earth par rapport inertiel dans earth: constant
+w_ie_e= np.array([0, 0., wie])
+w_ie_e= w_ie_e[:, np.newaxis]
+# Vecteur rotation earth par rapport inertiel dans plateforme
+w_ie_n= C_e_n * w_ie_e
+# Vecteur rotation plateforme par rapport earth dans plateforme
+w_en_n= np.array([0, 0, 0.])
+w_en_n= w_en_n[:, np.newaxis]
+a=np.array([0.])
+quat_w_en_n = np.concatenate((a[np.newaxis,:],w_en_n.transpose()),axis=1)
+# Vecteur rotation body par rapport plateforme dans body
+w_nb_b= np.array([0, 0, 0.])
+w_nb_b= w_nb_b[:, np.newaxis]
+
+
+Tangage = []
+Roulis = []
+Cap = []
+Pos_x = []
+Pos_y = []
+Pos_z = []
+Vit_x = []
+Vit_y = []
+Vit_z = []
+
+###Boucle principale d'itération d'intégration de la navigation
+
+for i in range(nbre_pas):      
+    # Calcul de la gravité locale à partir du modèle gravité
+    Modele_gravite= a1*(1+ a2 * (sin(phi))**2 + a3 * (sin(phi))**4 ) + (a4 + a5 * (sin(phi))**2) * alt + a6 * alt**2
+    Vecteur_Gravite = np.array([0, 0., -Modele_gravite])
+    Vecteur_Gravite = Vecteur_Gravite[:, np.newaxis]
+
+    # Calcul des sorties de l'accéléro et du gyro à chaque pas de temps
+    incr_f_b = np.array([0, 0., Modele_gravite])
+    incr_f_b = incr_f_b[:, np.newaxis]
+    vect_incr_body = np.array([0, 0., Modele_gravite])
+    a = np.array([0.])
+    quat_incr_body = np.concatenate((a,vect_incr_body),axis=0)
+    quat_incr_body = quat_incr_body[np.newaxis,:]
+    incr_w_ib_b = np.array([0, wie * 1.1, 0.])
+    incr_w_ib_b = incr_w_ib_b[:, np.newaxis]
+    incr_w_ib_b = incr_w_ib_b * 1.0
+
+    ##Integration de C_n_b pour: 
+    ## + Recalage du repère navigation à partir de l'incrément gyro
+    ## + extraction des attitudes associées qui en découle 
+                                    
+    ### calcul vecteur rotation w_ie_n à partir de w_ie_e      
+    w_ie_e_copy = np.copy(w_ie_e)
+    a = np.array([0.])
+    quat_w_ie_e = np.concatenate((a[np.newaxis,:],w_ie_e_copy.transpose()),axis=1)
+    quat_interm = qmul(quat_w_ie_e,quat_C_e_n)     
+    quat_w_ie_n = qmul(quat_C_n_e,quat_interm)
+
+    # Calcul vecteur rotation w_nb_b à partir de l'incrément gyro
+    quat_w_in_n = quat_w_ie_n + quat_w_en_n
+    quat_tampon = qmul(quat_w_in_n,quat_C_n_b)
+    quat_w_in_b = qmul(quat_C_b_n,quat_tampon)
+    quat_w_nb_b = quat_incr_w_ib_b - quat_w_in_b
+ 
+    # Integration de C_n_b  
+    quat_C_n_b = quat_C_n_b + 0.5 * qmul(quat_C_n_b ,quat_w_nb_b) * t_ech 
+    quat_C_b_n = Qconj(quat_C_n_b)
+    
+    # Extraction de Cap Roulis Tangage de C_n_b
+    q0 = quat_C_n_b[0][0]
+    q1 = quat_C_n_b[0][1]
+    q2 = quat_C_n_b[0][2]
+    q3 = quat_C_n_b[0][3]
+    
+    gama = atan2(2*q0*q1+2*q2*q3 , (q0)**2-(q1)**2-(q2)**2+(q3)**2) 
+    g = gama
+    theta = -asin(-2*q0*q2+2*q1*q3)                            
+    t = theta
+    psi = atan2(2*q0*q3+2*q1*q2 , (q0)**2+(q1)**2-(q2)**2-(q3)**2)  
+    p = psi
+    
+    # Construction de la matrice C_n_b
+    C_n_b = np.array([[cos(t)*cos(p), cos(t)*sin(p), -sin(t)],[-cos(g)*sin(p)+sin(g)*sin(t)*cos(p),
+                                                               cos(g)*cos(p)+sin(g)*sin(t)*sin(p), sin(g)*cos(t)],
+                      [sin(g)*sin(p)+cos(g)*sin(t)*cos(p), -sin(g)*cos(p)+cos(g)*sin(t)*sin(p), cos(g)*cos(t)]])
+    C_b_n = C_n_b.transpose()
+
+    ###Integration de C_e_n pour sortir la Longitude et la Latitude 
+
+    # Calcul des rayons de courbure nord et est 
+    Rn = Rzero * (1-exent**2)/(1-exent**2 * (sin(phi))**2)**(3/2)
+    Re = Rzero /(1-exent**2 * (sin(phi))**2)**(1/2)
+
+    # Calcul du vecteur rotation du repère navigation par rapport earth
+    w_en_n = np.array([-v_e_n[0][1]/(Rn+alt), v_e_n[0][0]/(Re+alt), v_e_n[0][0]*tan(phi)/(Rn+alt)])
+    w_en_n = w_en_n[:, np.newaxis]
+    a = np.array([0.])
+    quat_w_en_n = np.concatenate((a[np.newaxis,:],w_en_n.transpose()),axis=1)    
+    quat_C_e_n = quat_C_e_n + 0.5 * qmul(quat_C_e_n,quat_w_en_n) * t_ech 
+    quat_C_n_e = Qconj(quat_C_e_n)
+
+    q0 = quat_C_e_n[0][0]  
+    q1 = quat_C_e_n[0][1] 
+    q2 = quat_C_e_n[0][2] 
+    q3 = quat_C_e_n[0][3] 
+    pseudo_gama = atan2(2*q0*q1+2*q2*q3 , 2*q0*q2-2*q1*q3)
+    pseudo_theta = acos((q0)**2-(q1)**2-(q2)**2+(q3)**2)
+    pseudo_psi = atan2(-2*q0*q1+2*q2*q3,2*q0*q2+2*q1*q3)
+
+    lamda = pseudo_psi
+    l = lamda
+    phi = pi/2 - pseudo_theta
+
+    # Force de coriolis, calcul du vecteur rotation de Coriolis
+    quat_wCor = 2*quat_w_ie_n + quat_w_en_n
+    a = np.array([0.])
+    quat_v_e_n = np.concatenate((a[np.newaxis,:],v_e_n),axis=1)     
+    quat_force_Cor = qmul(quat_wCor,quat_v_e_n)
+    quat_interm = qmul(quat_incr_body,quat_C_b_n)
+    quat_incr_navig = qmul(quat_C_n_b,quat_interm)
+    a = np.array([0.])
+    quat_Vecteur_Gravite = np.concatenate((a[np.newaxis,:],Vecteur_Gravite.transpose()),axis=1)    
+
+    # Integration de la vitesse
+    quat_v_e_n = quat_v_e_n + (quat_incr_navig - quat_force_Cor + quat_Vecteur_Gravite) * t_ech
+    v_e_n = quat_v_e_n[:,1:4]
+
+    # Integration de l'altitude
+    alt = alt + v_e_n[0][2] * t_ech
+    
+    # Affichage valeur:
+    Tangage.append(g)
+    Roulis.append(t)
+    Cap.append(p)
+    Pos_x.append(lamda)
+    Pos_y.append(phi)
+    Pos_z.append(alt)
+    Vit_x.append(v_e_n[0][0])
+    Vit_y.append(v_e_n[0][1])
+    Vit_z.append(v_e_n[0][2])    
+    
+plt.clf()
+plt.subplot(3, 3, 1)
+plt.plot(tps, Pos_x, color='red')
+plt.xlabel('Position_x', labelpad=1)
+plt.ylabel('Temps')
+plt.subplot(3, 3, 2)
+plt.plot(tps, Pos_y, color='red')
+plt.xlabel('Position_y', labelpad=-2)
+plt.subplot(3, 3, 3)
+plt.plot(tps, Pos_z, color='red')
+plt.xlabel('Position_z', labelpad=1)
+plt.subplot(3, 3, 4)
+plt.plot(tps, Vit_x, color='blue')
+plt.xlabel('Vitesse_x', labelpad=1)
+plt.ylabel('Temps', labelpad=15)
+plt.grid(True)
+plt.subplot(3, 3, 5)
+plt.plot(tps, Vit_y, color='blue')
+plt.xlabel('Vitesse_y', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 6)
+plt.plot(tps, Vit_z, color='blue')
+plt.xlabel('Vitesse_z', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 7)
+plt.plot(tps, Tangage, color='green')
+plt.xlabel('Tangage', labelpad=1)
+plt.ylabel('Temps', labelpad=15)
+plt.grid(True)
+plt.subplot(3, 3, 8)
+plt.plot(tps, Roulis, color='green')
+plt.xlabel('Roulis', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 9)
+plt.plot(tps, Cap, color='green')
+plt.xlabel('Cap', labelpad=1)
+plt.grid(True)
+plt.show()

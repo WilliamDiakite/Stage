@@ -1,0 +1,129 @@
+import numpy as np
+import tensorflow as tf
+
+import matplotlib.pyplot as plt
+
+from keras.models import Sequential
+from keras.optimizers import SGD
+from keras.layers.core import Dense, Activation
+from keras.layers.recurrent import SimpleRNN
+
+from sine_data_gen import gen_sin
+
+
+#-----------------------------------#
+#  			USER PARAMETERS			#
+#-----------------------------------#
+nb_chunks = 20		# Number of timesteps = nb_chunks * 50 (sampling freq=50)					
+phase = 20			# Phase offset (offset applied on timespteps)		
+									
+hidden_units = 64 	# Nb of hidden units in recurrent layer					
+									
+epochs = 100						
+batch_size = 10						
+									
+learning_rate = 0.0001				
+momentum = 0.95
+
+#-----------------------------------#
+
+seed = 2006
+np.random.seed(seed)
+
+# Generate data
+X, Y = gen_sin(nb_chunks=nb_chunks)
+time = np.arange(X.shape[0])
+
+# Plot curves
+plt.plot(time[:250], X[:250], label='Input data X')
+plt.plot(time[:250], Y[:250], label='Target data Y')
+plt.axis([0, 249, -1.5, 1.5])
+plt.legend(loc='upper left', frameon=True)
+plt.title('Raw data, phase offset = {}. (Extract)'.format(phase))
+plt.xlabel('Timesteps')
+plt.ylabel('Sine amplitude')
+plt.show()
+
+# Split into train and test set
+end_learn = int(len(X) * 0.7)
+X_train = X[:end_learn]
+X_test = X[end_learn:]
+Y_train = Y[:end_learn]
+Y_test = Y[end_learn:]
+
+
+# Change shapes for sequential model
+X_train = X_train.reshape(X_train.shape + (1,))
+X_test = X_test.reshape(X_test.shape + (1,))
+Y_train = Y_train.reshape(Y_train.shape + (1,))
+Y_test = Y_test.reshape(Y_test.shape + (1,))
+
+X_train = np.reshape(X_train, (X_train.shape[0], 1, X_train.shape[1]))
+X_test = np.reshape(X_test, (X_test.shape[0], 1, X_test.shape[1]))
+Y_train = np.reshape(Y_train, (Y_train.shape[0], 1, Y_train.shape[1]))
+Y_test = np.reshape(Y_test, (Y_test.shape[0], 1, Y_test.shape[1]))
+
+
+# Define RNN model
+model = Sequential()
+model.add(SimpleRNN(units=hidden_units,
+					activation='tanh',
+					input_shape=(1, X_train.shape[2]),
+					return_sequences=True))
+model.add(Dense(units=X_train.shape[2], activation='linear'))
+
+
+# Define training opt
+sgd = SGD(lr=learning_rate, momentum=momentum, nesterov=True)
+model.compile(loss='mean_squared_error', optimizer=sgd)
+
+# Training model
+model.fit(X_train, Y_train, batch_size=batch_size, epochs=epochs)
+
+# Compute mean squared errors
+score_train = model.evaluate(X_train, Y_train, batch_size=10)
+score_test  = model.evaluate(X_test, Y_test, batch_size=10)
+
+print()
+print('Train MSE :', round(score_train, 6))
+print('Test MSE  :', round(score_test, 6))
+
+
+# compute squared errors (on test set only)
+Y_predict = model.predict(X_test)
+assert(Y_predict.shape == Y_test.shape)
+se = (Y_test - Y_predict)**2
+
+
+# Reshape for plot
+Y_test = np.reshape(Y_test, (Y_test.shape[0], ))
+Y_predict = np.reshape(Y_predict, (Y_predict.shape[0], ))
+se = np.reshape(se, (se.shape[0], ))
+
+# Plot Y_test, Y_predict and squarred error 
+time = np.arange(Y_test.shape[0])
+
+plt.plot(time[:250], Y_predict[:250], 'b-', label='Prediction')
+plt.plot(time[:250], Y_test[:250], 'r-', label='Target')
+plt.legend(loc='upper left', frameon=True)
+plt.axis([0, 250, -1, 1])
+plt.xlabel('Timesteps')
+plt.ylabel('Sine amplitude')
+plt.title('Target and Prediction')
+plt.show()
+
+plt.subplot(311)
+plt.plot(time[:250], Y_test[:250], 'r-')
+plt.axis([0, 250, -1, 1])
+plt.title('Target signal')
+
+plt.subplot(312)
+plt.plot(time[:250], Y_predict[:250], 'b-')
+plt.axis([0, 250, -1, 1])
+plt.title('Elman reconstructed signal')
+
+plt.subplot(313)
+plt.plot(time[:250], se[:250], 'g-')
+plt.title('Squared error')
+
+plt.show()

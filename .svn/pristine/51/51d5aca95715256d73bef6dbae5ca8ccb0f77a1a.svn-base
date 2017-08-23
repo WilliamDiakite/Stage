@@ -1,0 +1,105 @@
+import os
+import csv
+
+import numpy as np
+from pandas import read_csv
+
+from sklearn.preprocessing import StandardScaler
+
+
+def clean_dir(path):
+	for the_file in os.listdir(path):
+	    file_path = os.path.join(path, the_file)
+	    os.remove(file_path)
+
+		
+def fit_scaler(train_files):
+
+	sc = StandardScaler()
+	
+	# Fit scaler with every training files
+	for filename in train_files:
+		try:
+			tmp = read_csv(filename, index_col=False).values[:, 1:]
+			tmp = sc.partial_fit(tmp)
+		except:
+			print('[ ! ] Problem fitting scaler')
+	return sc
+
+
+def standardize(files, scaler, destination):
+
+	for in_file in files:
+
+		out_file = destination + os.path.basename(in_file)
+		
+		try:
+			# Get data and labels
+			tmp = read_csv(in_file, index_col=False)
+			labels = list(tmp)[1:]
+			tmp = tmp.values[:, 1:]
+
+			# Scale data
+			tmp = scaler.transform(tmp)
+			norm = np.vstack((np.arange(tmp.shape[0]), tmp.T)).T
+
+			# Save 
+			labels = ','.join(l for l in labels)
+			np.savetxt(out_file, norm, delimiter=',', header=labels)
+		
+		except:
+			print('[ ! ] Problem scaling :')
+			print('[-->]', out_file)
+			traceback.print_exc()
+			exit()
+
+
+
+
+def retrieve_engine_data(dataset_path):
+	'''
+		returns file lists
+	'''
+	print('[...] Retrieving datasets')
+
+	# Get paths to data
+	path_normal		= dataset_path + '/normal/not_normalized/'
+	path_anomalous	= dataset_path + '/anomalous/not_normalized/'
+
+	dest_normal		= dataset_path + '/normal/normalized/'
+	dest_anomalous	= dataset_path + '/anomalous/normalized/'
+
+	# Removes every normalized files if any
+	clean_dir(dest_normal)
+	clean_dir(dest_anomalous)
+
+	# Compute normal set size
+	nb_files = len(os.listdir(path_normal))
+	train_nb = int(nb_files * 0.70)
+	
+	# Shuffle file list for cross validation
+	l_file = os.listdir(path_normal)
+	np.random.shuffle(np.asarray(l_file))
+
+	# Store sets file lists
+	l_file_tmp  = [path_normal+x for x in l_file]
+	train_files = [path_normal+x for x in l_file[:train_nb]]
+	test_files_n= [path_normal+x for x in l_file[train_nb:]]
+	test_files_a= [path_anomalous+x for x in os.listdir(path_anomalous)]
+
+	# Scale data
+	print('[...] Fitting scaler')
+	all_files = l_file_tmp + test_files_a
+	scaler = fit_scaler(all_files)
+
+	print('[...] Scaling data')
+	standardize(train_files, scaler, dest_normal)
+	standardize(test_files_n, scaler, dest_normal)
+	standardize(test_files_a, scaler, dest_anomalous)
+
+	# Update files list
+	train_files = [dest_normal+x for x in l_file[:train_nb]]
+	test_files_n= [dest_normal+x for x in l_file[train_nb:]]
+	test_files_a= [dest_anomalous+x for x in os.listdir(path_anomalous)]
+
+	return train_files, test_files_n, test_files_a

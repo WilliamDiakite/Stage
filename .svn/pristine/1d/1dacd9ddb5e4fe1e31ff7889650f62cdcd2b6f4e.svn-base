@@ -1,0 +1,160 @@
+import numpy as  np
+import pandas as pd
+import random
+
+import tensorflow as tf
+
+import matplotlib.pyplot as plt
+
+from keras.models import Sequential
+from keras.optimizers import SGD
+from keras.layers.core import Dense, Activation
+from keras.layers.recurrent import SimpleRNN, LSTM
+
+from engine_data_retriever import retrieve_engine_data
+
+
+def init_elman_rnn(input_dim, output_dim, hidden_units=128, learning_rate=0.0001, momentum=0.95):
+
+	# Define RNN model
+	model = Sequential()
+	model.add(SimpleRNN(units=hidden_units,
+						activation='tanh',
+						input_shape=(1, input_dim),
+						return_sequences=True))
+	model.add(Dense(units=output_dim, activation='linear'))
+
+
+	# Define training opt
+	sgd = SGD(lr=learning_rate, momentum=momentum, nesterov=True)
+	model.compile(loss='mean_squared_error', optimizer=sgd)
+
+	return model
+
+def init_lstm(input_dim, output_dim, hidden_units=128, learning_rate=0.0001, momentum=0.95):
+
+	# Define RNN model
+	model = Sequential()
+	model.add(LSTM(units=hidden_units,
+						activation='tanh',
+						input_shape=(1, input_dim),
+						return_sequences=True))
+	model.add(Dense(units=output_dim, activation='linear'))
+
+
+	# Define training opt
+	sgd = SGD(lr=learning_rate, momentum=momentum, nesterov=True)
+	model.compile(loss='mean_squared_error', optimizer=sgd)
+
+	return model
+
+def select_sensors(df, input_sensors, target_sensor):
+
+	input_df = df[input_sensors]
+	target_df = df[target_sensor]
+
+	input_data = input_df.values
+	target_data = target_df.values
+
+	input_data = np.reshape(input_data, (input_data.shape[0], 1, input_data.shape[1]))
+	target_data = np.reshape(target_data, (target_data.shape[0], 1, target_data.shape[1]))
+
+	return input_data, target_data
+
+def train(model, train_files, input_sensors, target_sensor, batch_size=10 ,epochs=10):
+	'''
+		Trains the model on every file available
+	'''
+	for e in range(epochs):
+
+		print('-----------------------------')
+		print('######## EPOCH {e}/{tot} ########'.format(e=e+1, tot=epochs))
+		print('-----------------------------')
+
+		for file in train_files:
+
+			# load and prepare data
+			tmp = pd.read_csv(file)
+
+			# Select chosen column
+			input_data, target_data = select_sensors(tmp, input_sensors, target_sensor)
+
+			# train model with current data
+			model.fit(input_data, target_data, batch_size=batch_size, epochs=1)
+
+def plot_random_prediction(model, test_files, input_sensors, target_sensor):
+	
+	# Chose a random file to plot
+	file = random.choice(test_files)
+
+	# Load the file
+	df = pd.read_csv(file)
+
+	# Select chosen column
+	input_data, target_data = select_sensors(df, input_sensors, target_sensor)
+
+	# Compute prediction
+	prediction = model.predict(input_data)
+
+	# Compute squared error
+	se = (prediction - target_data)**2
+
+	# Reshape for plotting
+	assert(len(target_data.shape) == 3), 'target data must have len(shape) = 3'
+	assert(len(prediction.shape) == 3), 'prediction data must have len(shape) = 3'
+	target_data = np.reshape(target_data, (target_data.shape[0], target_data.shape[2]))
+	prediction = np.reshape(prediction, (prediction.shape[0], prediction.shape[2]))
+	se = np.reshape(se, (se.shape[0], ))
+
+	# Plot target data, prediction and squared error
+	assert(target_data.shape[0] == prediction.shape[0]), 'target and prediction have to be the same length'
+	time = np.arange(target_data.shape[0])
+
+	plt.plot(time, prediction, 'b-', label='Prediction')
+	plt.plot(time, target_data, 'r-', label='Target')
+	plt.legend(loc='upper left', frameon=True)
+	plt.axis([0, len(time), -3, 3])
+	plt.xlabel('Timesteps')
+	plt.ylabel('Sensor value')
+	plt.title('Target and Prediction')
+	plt.show()
+
+	plt.subplot(311)
+	plt.plot(time, target_data, 'r-')
+	plt.axis([0, len(time), -3, 3])
+	plt.title('Target signal')
+
+	plt.subplot(312)
+	plt.plot(time, prediction, 'b-')
+	plt.axis([0, len(time), -3, 3])
+	plt.title('Elman reconstructed signal')
+
+	plt.subplot(313)
+	plt.plot(time, se, 'g-')
+	plt.title('Squared error')
+
+	plt.show()
+
+	
+
+
+#----------------------------
+
+if __name__ == '__main__':
+	# Get some data
+	dataset_path 	= './../Ressources/Generated_files/Datasets/sensor_predict'
+	train_files, test_files, _ = retrieve_engine_data(dataset_path)
+
+	# Select sensors
+	input_sensors = ['ma_12_ACCELERATOR_POS_D', 'ma_12_ACCELERATOR_POS_E', 'ma_12_RPM']
+	target_sensor = ['ma_12_SPEED']
+
+	# Init rnn model
+	#model = init_elman_rnn(input_dim=len(input_sensors), output_dim=len(target_sensor))
+	model = init_lstm(input_dim=len(input_sensors), output_dim=len(target_sensor))
+
+	# Train model
+	train(model, train_files, input_sensors, target_sensor)
+
+	# Plot a random test file 
+	plot_random_prediction(model, test_files, input_sensors, target_sensor)

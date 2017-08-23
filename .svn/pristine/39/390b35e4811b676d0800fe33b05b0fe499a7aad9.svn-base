@@ -1,0 +1,318 @@
+###    Code Terre_Plate version quaternion   ###
+
+
+# Importation des modules necessaires :
+import sys
+from math import sin, cos, atan, pi, atan2, sqrt, asin
+import numpy as np
+import matplotlib.pyplot as plt
+
+def qmul(Qb, Qc):
+    ''' Methode permettant de multiplier deux quaternions '''
+    Qa = Qc[0] * Qb
+    Qa[0] = Qa[0] - Qb[1]*Qc[1] - Qb[2]*Qc[2] - Qb[3]*Qc[3]
+    Qa[1] = Qa[1] + Qb[0]*Qc[1] + Qb[2]*Qc[3] - Qb[3]*Qc[2]
+    Qa[2] = Qa[2] + Qb[0]*Qc[2] + Qb[3]*Qc[1] - Qb[1]*Qc[3]
+    Qa[3] = Qa[3] + Qb[0]*Qc[3] + Qb[1]*Qc[2] - Qb[2]*Qc[1]
+    return Qa
+
+
+def qconj(Qb):
+    Qa = np.array([0,0,0,0.])
+    Qa[0] = Qb[0]
+    Qa[1] = -Qb[1]
+    Qa[2] = -Qb[2]
+    Qa[3] = -Qb[3]
+    return Qa
+
+f = np.loadtxt('/home/alex/Documents/Alex projet Fusion/Données Phillipe/test_immobile_20170703_1605_10mn.csv',
+               delimiter=';', usecols=(0, 1, 2, 3, 4, 5, 6, 7, 8))
+
+MAccX = f[:, 0] * 9.78
+MAccY = f[:, 1] * 9.78
+MAccZ = f[:, 2] * 9.78
+MGyroX = f[:, 3]*(2*pi/360)
+MGyroY = f[:, 4]*(2*pi/360)
+MGyroZ = f[:, 5]*(2*pi/360)
+MMagX = f[:, 6]
+MMagY = f[:, 7]
+MMagZ = f[:, 8]
+
+MGyroX_m = np.mean(MGyroX)
+MGyroY_m = np.mean(MGyroY)
+MGyroZ_m = np.mean(MGyroZ)
+MAccX_m = np.mean(MAccX)
+MAccY_m = np.mean(MAccY)
+MAccZ_m = np.mean(MAccZ)
+MMagX_m = np.mean(MMagX)
+MMagY_m = np.mean(MMagY)
+MMagZ_m = np.mean(MMagZ)
+
+long_senseurs = np.size(MAccX)
+g = 9.81
+
+# Formatage des donnees senseurs
+for i in range(long_senseurs):
+    MGyroX[i] = MGyroX[i] - MGyroX_m
+    MGyroY[i] = MGyroY[i] - MGyroY_m
+    MGyroZ[i] = MGyroZ[i] - MGyroZ_m   
+    MAccX[i] = (MAccX[i] - MAccX_m)/4
+    MAccY[i] = (MAccY[i] - MAccY_m)/4
+    MAccZ[i] = (MAccZ[i] - MAccZ_m)/4  +9.81 
+   
+# Fenetre de temps
+t_ech = 0.0105042
+tps = np.arange(t_ech, long_senseurs*t_ech, t_ech)
+nbre_pas = np.size(tps)
+
+
+Pos = np.array([0, 0, 0])
+Pos = Pos[:, np.newaxis]
+Position = np.zeros((nbre_pas, 3))
+gama = 0
+theta = 0
+psi = 0
+Attitude_Gyr = np.zeros((3, 1))
+Attitude_Fused = np.zeros((3, 1))
+Attitude = np.zeros((nbre_pas, 3))
+
+# Vitesse earth dans repere navigation
+Vit = np.array([0, 0, 0])
+Vit = Vit[:, np.newaxis]
+Vitesse = np.zeros((nbre_pas, 3))
+
+# Increments acceleration
+incr_f_b = np.array([0, 0, 9.78])
+incr_f_b = incr_f_b[:, np.newaxis]
+# Increments gyro
+incr_w_nb_b = np.array([0, 0, 0])
+incr_w_nb_b = incr_w_nb_b[:, np.newaxis]
+
+# Matrice de passage de body a navigation
+C_b_n = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+# Vecteur rotation body par rapport plateforme dans body
+w_nb_b = np.array([0, 0, 0])
+w_nb_b = w_nb_b[:, np.newaxis]
+
+quat_INDENTITE = np.array([1, 0, 0 ,0])
+quat_C_n_b_gyr= np.array([1, 0, 0, 0])
+quat_C_n_b_fused= np.array([1, 0, 0, 0])
+alpha= 0.01
+betta= 0.01
+
+debug_quat_ACC = np.zeros((nbre_pas,4))
+debug_quat_MAG = np.zeros((nbre_pas,4))
+debug_quat_MAG_Chapeau = np.zeros((nbre_pas,4))
+debug_quat_fused = np.zeros((nbre_pas,4))
+debug_quat_C_n_b_fused_prim = np.zeros((nbre_pas,4))
+debug_quat_C_n_b_fused = np.zeros((nbre_pas,4))
+
+Tangage = []
+Roulis = []
+Cap = []
+Pos_x = []
+Pos_y = []
+Pos_z = []
+Vit_x = []
+Vit_y = []
+Vit_z = []
+
+#############################################################
+#Boucle principale d'iteration d'integration de la navigation
+#############################################################
+for k in range(nbre_pas):
+    print(k)
+    Norme_Acc = sqrt(MAccX[k]**2 + MAccY[k]**2 + MAccZ[k]**2) 
+    vect_incr_body = np.array([MAccX[k], MAccY[k], MAccZ[k]])
+    Vecteur_Gravite = np.array([0, 0, -9.78])
+    Vecteur_Gravite = Vecteur_Gravite[:, np.newaxis]
+    
+    quat_incr_w_ib_b = np.array([0, MGyroX[k], MGyroY[k], MGyroZ[k]])
+    quat_w_nb_b = quat_incr_w_ib_b
+    
+    quat_C_n_b_gyr = quat_C_n_b_fused + 0.5 * qmul(quat_C_n_b_fused,quat_w_nb_b) * t_ech
+
+    NormAcc = sqrt((MAccX[k])**2+(MAccY[k])**2+(MAccZ[k])**2)
+    Axn = MAccX[k]/NormAcc
+    Ayn = MAccY[k]/NormAcc
+    Azn = MAccZ[k]/NormAcc
+    
+    if  Azn >= 0 : #Moi
+        q0 = sqrt((Azn+1)/2)
+        q1 = Axn/sqrt(2*(Azn+1))
+        q2 = Ayn/sqrt(2*(Azn+1))
+        q3 = 0
+    else :
+        q0 = Axn/sqrt(2*(1-Azn))
+        q1 = sqrt((1-Azn)/2)
+        q2 = 0
+        q3 = Ayn/sqrt(2*(1-Azn))
+    ''' 
+    if  Azn >= 0 : #Philippe
+        q0 = sqrt((Azn+1)/2)
+        q1 = Ayn/sqrt(2*(Azn+1))
+        q2 = -Axn/sqrt(2*(Azn+1))
+        q3 = 0
+    else :
+        q0 = Ayn/sqrt(2*(1-Azn))
+        q1 = sqrt((1-Azn)/2)
+        q2 = 0
+        q3 = -Axn/sqrt(2*(1-Azn))        
+        '''
+    quat_ACC = np.array([q0, q1, q2, q3])
+    debug_quat_ACC = np.array([q0, q1, q2, q3])
+
+    if  q0 >=0.9 :
+        quat_ACC_Barre = (1-alpha)*quat_INDENTITE + alpha*quat_ACC
+    else :
+        quat_ACC_Barre = (sin((1-alpha)*q0)/sin(q0))*quat_INDENTITE + (sin((alpha)*q0)/sin(q0))*quat_ACC
+
+    quat_ACC_Chapeau = quat_ACC_Barre/sqrt(quat_ACC_Barre[0]**2+quat_ACC_Barre[1]**2+quat_ACC_Barre[2]**2)
+
+    quat_C_n_b_fused_prim = qmul(quat_C_n_b_gyr,quat_ACC_Chapeau)
+    debug_quat_C_n_b_fused_prim = quat_C_n_b_fused_prim
+    
+    NormMMag = sqrt((MMagX[k])**2+(MMagY[k])**2+(MMagZ[k])**22)
+    Magxn = MMagX[k] / NormMMag
+    Magyn = MMagY[k] / NormMMag
+    Magzn = MMagZ[k] / NormMMag
+    SIGMA = Magxn**2 + Magyn**2
+    '''
+    if  Magyn < 0 : #Philippe
+        q0 = sqrt(SIGMA+Magyn*sqrt(SIGMA))/sqrt(2*SIGMA)
+        q1 = 0
+        q2 = 0
+        q3 = -Magxn/(sqrt(2)*sqrt(SIGMA+Magxn*sqrt(SIGMA)))
+    else :
+        q0 = Magxn/(sqrt(2)*sqrt(SIGMA-Magxn*sqrt(SIGMA)))
+        q1 = 0
+        q2 = 0
+        q3 = sqrt(SIGMA-Magyn*sqrt(SIGMA))/sqrt(2*SIGMA)
+    '''
+    if  Magxn < 0 : #Théorie
+        q0 = Magyn/(sqrt(2)*sqrt(SIGMA-Magxn*sqrt(SIGMA)))
+        q1 = 0
+        q2 = 0
+        q3 = sqrt(SIGMA-Magxn*sqrt(SIGMA))/sqrt(2*SIGMA)    
+    else :
+        q0 = sqrt(SIGMA+Magxn*sqrt(SIGMA))/sqrt(2*SIGMA)
+        q1 = 0
+        q2 = 0
+        q3 = Magyn/(sqrt(2)*sqrt(SIGMA+Magxn*sqrt(SIGMA)))
+    
+    """    
+    if  Magyn < 0 : #Moi
+        q0 = -Magxn/(sqrt(2)*sqrt(SIGMA-Magyn*sqrt(SIGMA)))
+        q1 = 0
+        q2 = 0
+        q3 = sqrt(SIGMA-Magyn*sqrt(SIGMA))/sqrt(2*SIGMA)    
+    else :
+        q0 = sqrt(SIGMA+Magyn*sqrt(SIGMA))/sqrt(2*SIGMA)
+        q1 = 0
+        q2 = 0
+        q3 = -Magxn/(sqrt(2)*sqrt(SIGMA+Magyn*sqrt(SIGMA)))
+        """  
+    quat_MAG = np.array([q0, q1, q2, q3])
+    debug_quat_MAG = np.array([q0, q1, q2, q3])
+    
+    if  q0 >=0.9 :
+        quat_MAG_Barre = (1-betta)*quat_INDENTITE + betta*quat_MAG
+    else :
+        quat_MAG_Barre = (1-betta)*quat_INDENTITE + betta*quat_MAG
+
+    quat_MAG_Chapeau = quat_MAG_Barre/sqrt(quat_MAG_Barre[0]**2+quat_MAG_Barre[1]**2+quat_MAG_Barre[2]**2)
+    debug_quat_MAG_Chapeau = quat_MAG_Chapeau
+
+    quat_C_n_b_fused = qmul(quat_C_n_b_fused_prim,quat_MAG_Chapeau)
+    debug_quat_C_n_b_fused = quat_C_n_b_fused
+    quat_C_n_b_fused_conj = qconj(quat_C_n_b_fused)
+
+
+    a = np.array([0.])
+    quat_incr_body = np.concatenate((a, vect_incr_body), axis=0)
+    quat_interm = qmul(quat_incr_body,quat_C_n_b_fused_conj)
+    quat_incr_navig = qmul(quat_C_n_b_fused,quat_interm)
+ 
+    q0 = quat_C_n_b_fused[0]
+    q1 = quat_C_n_b_fused[1]
+    q2 = quat_C_n_b_fused[2] 
+    q3 = quat_C_n_b_fused[3] 
+    debug_quat_fused = np.array([q0, q1, q2, q3])
+    
+    gama = atan2(2*q0*q1+2*q2*q3 , (q0)**2-(q1)**2-(q2)**2+(q3)**2) * (180/pi)
+    Attitude[0] = gama
+    theta = -asin(2*(-q0*q2+q1*q3)) * (180/pi)
+    Attitude[1] = theta
+    psi = atan2(2*(q0*q3+q1*q2) , (q0)**2+(q1)**2-(q2)**2-(q3)**2) * (180/pi) 
+    Attitude[3] = psi
+    
+    vect_incr_navig = quat_incr_navig[1:4]
+    vect_incr_navig = vect_incr_navig[:, np.newaxis]
+
+    Vit = Vit + (vect_incr_navig + Vecteur_Gravite) * t_ech
+
+    Vitesse[0][0] = Vit[0][0]
+    Vitesse[0][1] = Vit[1][0]
+    Vitesse[0][2] = Vit[2][0]
+    # integration de la position
+    Pos = Pos + Vit * t_ech
+    Position[0][0] = Pos[0][0]
+    Position[0][1] = Pos[1][0]
+    Position[0][2] = Pos[2][0]
+    
+    # Affichage valeur:
+    Tangage.append(gama)
+    Roulis.append(theta)
+    Cap.append(psi)
+    
+    Pos_x.append(Position[0][0])
+    Pos_y.append(Position[0][1])
+    Pos_z.append(Position[0][2])
+    Vit_x.append(Vitesse[0][0])
+    Vit_y.append(Vitesse[0][1])
+    Vit_z.append(Vitesse[0][2])    
+    
+    
+plt.clf()
+
+plt.subplot(3, 3, 1)
+plt.plot(tps, Pos_x, color='red')
+plt.xlabel('Position_x', labelpad=1)
+plt.ylabel('Temps')
+plt.grid(True)
+plt.subplot(3, 3, 2)
+plt.plot(tps, Pos_y, color='red')
+plt.xlabel('Position_y', labelpad=-2)
+plt.grid(True)      
+plt.subplot(3, 3, 3)
+plt.plot(tps, Pos_z, color='red')
+plt.xlabel('Position_z', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 4)
+plt.plot(tps, Vit_x, color='blue')
+plt.xlabel('Vitesse_x', labelpad=1)
+plt.ylabel('Temps', labelpad=15)
+plt.grid(True)
+plt.subplot(3, 3, 5)
+plt.plot(tps, Vit_y, color='blue')
+plt.xlabel('Vitesse_y', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 6)
+plt.plot(tps, Vit_z, color='blue')
+plt.xlabel('Vitesse_z', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 7)
+plt.plot(tps, Tangage, color='green')
+plt.xlabel('Tangage', labelpad=1)
+plt.ylabel('Temps', labelpad=15)
+plt.grid(True)
+plt.subplot(3, 3, 8)
+plt.plot(tps, Roulis, color='green')
+plt.xlabel('Roulis', labelpad=1)
+plt.grid(True)
+plt.subplot(3, 3, 9)
+plt.plot(tps, Cap, color='green')
+plt.xlabel('Cap', labelpad=1)
+plt.grid(True)
+
+plt.show()

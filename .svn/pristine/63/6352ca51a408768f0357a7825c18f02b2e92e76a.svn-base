@@ -1,0 +1,205 @@
+import numpy as np
+import utils 
+import tensorflow as tf
+
+from utils import DatasetInfo, drange
+from class_autoencoder import Autoencoder
+from feature_selection import get_best_features
+
+from pandas import read_csv
+from sklearn.preprocessing import MinMaxScaler
+
+
+
+'''
+Activation functions :
+	tf.nn.relu(features, name=None)
+	tf.nn.relu6(features, name=None)
+	tf.nn.crelu(features, name=None)
+	tf.nn.elu(features, name=None)
+	tf.nn.softplus(features, name=None)
+	tf.nn.softsign(features, name=None)
+	tf.sigmoid(x, name=None)	(default)
+	tf.tanh(x, name=None)
+
+
+Optimizers :
+	tf.train.Optimizer
+	tf.train.GradientDescentOptimizer  (default)
+	tf.train.AdadeltaOptimizer
+	tf.train.AdagradOptimizer
+	tf.train.AdagradDAOptimizer
+	tf.train.MomentumOptimizer
+	tf.train.AdamOptimizer     
+	tf.train.FtrlOptimizer
+	tf.train.ProximalGradientDescentOptimizer
+	tf.train.ProximalAdagradOptimizer
+	tf.train.RMSPropOptimizer
+'''
+
+
+#-------------------------------------------------------------------------------#
+# 							APPLICATION'S PARAMETERS							#
+#-------------------------------------------------------------------------------#
+
+#--- DATA PATH ---#
+
+# Path to "normal" dataset
+dataset_path 	= './../../Ressources/Generated_files/Datasets/vasile_fs_clean'
+
+# Stored models
+stored_models = './Saved_models/'
+
+
+#--- MODEL PARAMETERS ---#
+
+# Model architecture (hidden layers only)
+hidden_layers = [41, 15, 3, 15, 41]
+
+# Learning parameters
+activation		= tf.nn.tanh
+learning_rate 	= 0.0001
+optimizer		= tf.train.RMSPropOptimizer(learning_rate, 0.95)
+batch_size		= 100
+epochs 			= 1
+file_start 		= 0.0
+file_end   		= 1
+
+
+#--- Threshold parameters ---#
+
+# plage de recherche du seuil
+min_threshold = 0
+max_threshold = 3
+
+# pas de la recherche du seuil
+threshold_step	= 0.05
+
+
+
+#-------------------------------------------------------------------------------#
+# 							TRAINING AND SCORING 								#
+#-------------------------------------------------------------------------------#
+
+
+if __name__ == '__main__':
+
+	from argparse import ArgumentParser
+	parser = ArgumentParser()
+	parser.add_argument('-reset', action='store_true', help="If set, model weights will be reinitialized")
+	parser.add_argument('-force_reset', action='store_true', help="Reset model (if created) without asking for permission")
+	parser.add_argument('-feature_select', action='store_true', help='Apply feature selection, only keep best features during training and testing')
+	parser.add_argument("mode", type=str, help='Choose application mode',
+						choices=['train_score', 'train', 'score'])
+	parser.add_argument('name', type=str, help='Name of the model')
+	args = parser.parse_args()
+
+	# Fix random seed for reproducibility
+	np.random.seed(7)
+
+
+
+	#-------------------------------------------------------------------------------#
+	#								APPLICATION INIT 								#
+	#-------------------------------------------------------------------------------#
+	
+	if args.feature_select is True:
+		# Apply feature selection to get best features
+		bf = get_best_features(dataset_path)
+	else:
+		bf = None
+	
+	#bf =  ['std_w60_MAF', 'ma_60_AMBIANT_AIR_TEMP', 'std_w12_SPEED', 'std_w60_INTAKE_TEMP', 'raw_ACCELERATOR_POS_D', 'ma_60_INTAKE_TEMP', 'std_w60_FUEL_INJECT_TIMING', 'std_w60_FUEL_RAIL_PRESSURE_DIRECT', 'ma_12_COOLANT_TEMP', 'std_w60_ACCELERATOR_POS_D', 'std_w60_CATALYST_TEMP_B1S1', 'ma_60_THROTTLE_ACTUATOR', 'std_w12_RPM', 'ma_60_RPM', 'ma_12_SPEED', 'std_w60_COMMANDED_EGR', 'ma_60_COMMANDED_EGR', 'ma_60_EGR_ERROR', 'ma_12_CATALYST_TEMP_B1S1', 'raw_AMBIANT_AIR_TEMP', 'ma_12_ENGINE_LOAD', 'ma_60_THROTTLE_POS', 'std_w60_THROTTLE_ACTUATOR', 'std_w60_ENGINE_LOAD', 'ma_12_FUEL_RAIL_PRESSURE_DIRECT', 'ma_60_COOLANT_TEMP', 'ma_60_MAF', 'ma_60_ACCELERATOR_POS_E', 'std_w60_EGR_ERROR', 'ma_60_SPEED', 'ma_60_ENGINE_LOAD', 'ma_60_FUEL_RAIL_PRESSURE_DIRECT', 'ma_12_AMBIANT_AIR_TEMP', 'ma_60_CATALYST_TEMP_B1S1', 'ma_60_ACCELERATOR_POS_D', 'std_w60_RPM', 'std_w60_ACCELERATOR_POS_E', 'ma_60_INTAKE_PRESSURE', 'ma_12_ACCELERATOR_POS_E', 'std_w12_ACCELERATOR_POS_D', 'ma_60_FUEL_INJECT_TIMING']
+
+	# Initialize a data information collector
+	di = DatasetInfo(dataset_path)
+	#train_files, test_files_n, test_files_a = utils.get_dataset_files(dataset_path)
+	train_files, test_files_n, test_files_a = utils.get_dataset_files_dumb(dataset_path)
+	
+
+	# Initialize model
+	model = Autoencoder(model_name=args.name, 
+						input_dim=di.nb_features() if bf is None else len(bf), 
+						hidden_layers=hidden_layers, 
+						optimizer=optimizer)
+
+	if args.force_reset is False:
+
+		# Restore model parameters if needed
+		if args.reset is True:
+			
+			while True:
+				choice_ar = '[ ! ] Are you sure you want to reset model "' + args.name +'" ? [y/n]'
+				choice = input(choice_ar)
+
+				if choice == 'y' or choice == 'Y':
+					print('[ ! ] "', args.name, '" will not be restored')
+					break
+
+				elif choice == 'n' or choice == 'N':
+					model_path = stored_models + args.name + '.ckpt'
+					
+					try:		
+						model.restore(model_path)
+						print('[ + ] Model "', args.name, '" has been restored')
+					except:
+						print('[ ! ] Model "', args.name, '" not founded, creating model...')
+					break
+
+		elif args.reset is False:
+			model_path = stored_models + args.name + '.ckpt'
+			
+			try:
+				model.restore(model_path)
+				print('[ + ] Model "', args.name, '" is now loaded')
+			except:
+				print(model_path)
+				print('[/!\] Model "', args.name, '" is not created yet, creating model...')
+
+	elif args.force_reset is True:
+		print('[ ! ] Model "', args.name, '" has been forced to reset')
+
+
+
+	#-----------------------------------------------------------------------------------#
+	#								TRAINING & SCORING									#
+	#-----------------------------------------------------------------------------------#
+
+	# Train the model and compute score
+	if args.mode == 'train_score':
+		
+		# Training model
+		print('[ + ] Training and testing model')
+		model.train_files(train_files=train_files, 
+						validation_files=test_files_n,
+						best_features=bf,
+						training_epochs=epochs,
+						batch_size=batch_size,  
+						start_file_prct=file_start, 
+						end_file_prct = file_end)
+
+		# Compute roc curve
+		model.plot_roc(min_threshold, max_threshold, threshold_step, 
+							test_files_n, test_files_a, batch_size, bf)
+				
+
+	# Only train the model
+	elif args.mode == 'train':
+
+		print('[ + ] Training and testing model')
+		model.train_files(train_files=train_files,
+						validation_files=test_files_n,
+						best_features=bf, 
+						training_epochs=epochs,
+						batch_size=batch_size, 
+						start_file_prct=file_start, 
+						end_file_prct = file_end)
+
+
+	# Compute score only
+	elif args.mode == 'score':
+		# Compute roc curve
+		model.plot_roc(min_threshold, max_threshold, threshold_step, 
+							test_files_n, test_files_a, batch_size, bf)
+
+	print('[DONE]')

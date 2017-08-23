@@ -1,0 +1,485 @@
+# Autoencoder Class
+
+import os
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import traceback
+
+from sklearn.metrics import roc_curve, auc
+from math import floor
+from utils import drange, DatasetInfo, plot
+from pandas import read_csv
+
+
+
+def variable_summaries(var):
+  '''
+  	Attach a lot of summaries to a Tensor (for TensorBoard visualization)
+  '''
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean', mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev', stddev)
+    tf.summary.scalar('max', tf.reduce_max(var))
+    tf.summary.scalar('min', tf.reduce_min(var))
+    tf.summary.histogram('histogram', var)
+
+
+
+class Autoencoder(object):
+
+	def __init__(self, model_name, input_dim, hidden_layers, transfer_function=tf.nn.sigmoid, optimizer=tf.train.AdamOptimizer()):
+		'''
+			Init graph model
+
+			Parameters :
+				model_name	: name used for summaries and roc curve file
+				input_dim	: nb of features in dataset
+				hidden_layers: list of int that defines hidden layers architecture
+				transfer_function : (activation function) 
+				optimizer 	: gradient descent optimizer 
+		'''
+
+		#--- Model parameters
+		self.model_name 	= model_name
+		
+		self.input_dim 		= input_dim
+		self.hidden_layers	= hidden_layers
+		self.shape			= [self.input_dim] + hidden_layers + [self.input_dim]
+		self.n_output		= input_dim
+		
+		self.weights 		= dict()
+		self.biases 		= dict()
+		self.layers 		= dict() 
+							
+		self.transfer 		= transfer_function
+		self.optimizer		= optimizer
+
+
+		#--- Input data
+		with tf.name_scope('input'):
+			self.input = tf.placeholder('float', [None, self.input_dim], name='input')
+
+		#--- DEBUG
+		self.A = tf.placeholder('float',[None, self.input_dim])
+		self.B = tf.placeholder('float',[None, self.input_dim])
+		# cost by hand
+		self.cost_bh = tf.reduce_mean(tf.pow(self.A - self.B, 2))
+		#----
+
+		
+		#--- Init weights and biases (tied weights)
+		diff = 1
+		for i in range(len(self.hidden_layers)+1):
+			name = 'h' + str(i)
+			with tf.name_scope(name):
+
+				with tf.name_scope('weights'):
+					if i < int(len(self.shape)/2):
+						self.weights[name] = tf.Variable(tf.random_normal([self.shape[i], self.shape[i+1]]))
+					else:
+						older = 'h' + str((i-diff))
+						self.weights[name] = tf.transpose(self.weights[older])
+						diff += 2
+					variable_summaries(self.weights[name])
+
+				with tf.name_scope('biases'):
+					self.biases[name] = tf.Variable(tf.random_normal([self.shape[i+1]]))
+					variable_summaries(self.biases[name])
+
+				if i == 0:
+					with tf.name_scope('activation'):
+						self.layers[name] = self.transfer(tf.add(tf.matmul(self.input, self.weights[name]), self.biases[name]))
+						tf.summary.histogram('activations', self.layers[name])
+				else:
+					prev = 'h'+str(i-1)
+					with tf.name_scope('activation'):
+						self.layers[name] = self.transfer(tf.add(tf.matmul(self.layers[prev], self.weights[name]), self.biases[name]))
+						tf.summary.histogram('activations', self.layers[name])
+				
+
+		# Output layer is last layer
+		with tf.name_scope('output'):
+			self.output = self.layers['h{}'.format(len(hidden_layers))]
+
+		#--- Cost function
+		with tf.name_scope('least_square_error'):
+			self.cost = tf.reduce_mean(tf.pow(self.input - self.output, 2))
+			tf.summary.scalar("least_square_error_train", self.cost)
+			
+		'''
+		#--- Cost function for validation summary
+		with tf.name_scope('least_square_error_validation'):
+			self.cost_validation = tf.reduce_mean(tf.pow(self.input - self.output, 2))
+			tf.summary.scalar("least_square_error_validation", self.cost_validation)
+		'''
+			
+
+		#--- Define optimizer
+		with tf.name_scope('train_step'):
+			self.optimizer = optimizer.minimize(self.cost)
+
+		#--- Session init
+		self.sess = tf.Session()
+		self.sess.run(tf.global_variables_initializer())
+		self.saver = tf.train.Saver()
+
+		# create a summary for our cost and accuracy
+		self.summary_op = tf.summary.merge_all()
+
+
+
+
+	#---------------------------------------------------#
+	#				TRAINING & SCORING					#
+	#---------------------------------------------------#
+	
+			
+	def train_files(self, train_files, validation_files, best_features, batch_size, start_file_prct, end_file_prct, training_epochs=5, log_path='./Summaries/'):
+		'''
+			Train the model
+			Parameters 
+				train_files 	: list that links to every train files
+				validation_files: list that links to every validation files (no training step)
+				batch_size		: number of sample to feed before a training step
+				start_file_prct : where the file should start (0 <= value <= 1)
+				end_file_prct 	: where the file should stop (start_file <= value <= 1)
+				training_epochs : number of times to feed entire dataset
+				log_path 		: directory location to store summaries (tensorboard)
+		'''
+
+		# Init summary writer
+		log_path = log_path + self.model_name
+		writer = tf.summary.FileWriter(log_path, graph=self.sess.graph)
+		step = 0
+
+		# Start training
+		for epoch in range(training_epochs):
+
+			print('[...] Starting epoch', epoch+1, '/', training_epochs)
+			
+			# For every file in the train file list
+			for file in train_files:
+
+				# Read file
+				tmp = read_csv(file)
+
+				# Get start and stop marker
+				start_file = int(tmp.shape[0]*start_file_prct)
+				end_file = int(tmp.shape[0]*end_file_prct)
+
+				if best_features is not None:
+					try :
+						# Keep best features
+						tmp = tmp[best_features].values[start_file:end_file, :]
+					except:
+						print('[ ! ] ERROR in train_files : keeping best features:')
+						print('[ ! ] best features :', best_features)
+						traceback.print_exc()
+						exit()
+				else:
+					# Removes index column
+					tmp = tmp.values[start_file:end_file, 1:]
+
+				batch_count = int(tmp.shape[0] / batch_size)
+				current_pos = 0
+				file_cost = 0.
+
+				for i in range(batch_count+1):		
+					
+					batch = tmp[i*batch_size:(i+1)*batch_size,:]
+
+					try:
+						# Compute training step (optimizer) and batch loss (cost)
+						_, batch_cost, summary = self.sess.run([self.optimizer, self.cost, self.summary_op], feed_dict={self.input:batch}) 
+						file_cost += (batch_cost / batch_count)
+					except:
+						break
+
+					if i % 100 == 0:
+						# Updating summary for tensorboard
+						writer.add_summary(summary, step)
+						step += 1
+					
+					if batch.size == 0:
+						print('[ ! ] train_files : ALERT BATCH SIZE 0')
+
+			# Display average loss 
+			train_set_loss = self.compute_set_loss(train_files, best_features)
+			valid_set_loss = self.compute_set_loss(validation_files, best_features)
+			print('[-->] \tAverage loss on train set      :', train_set_loss)
+			print('[-->] \tAverage loss on validation set :', valid_set_loss)
+
+		# save model
+		file = 'Saved_models/'+self.model_name+'.ckpt'
+		save_path = self.saver.save(self.sess, file)
+		print('[ + ] Model parameters have been saved')
+
+
+	def compute_set_loss(self, file_list, best_features):
+		'''
+			Computes the average loss of a complete set (with multiple files)
+			Parameters
+				file_list : file list that links to every file of the dataset part
+			Output 
+				cost : average dataset cost
+		'''
+
+		cost = 0.
+
+		for file in file_list:
+
+			# Read file 
+			data = read_csv(file)
+			if best_features is not None:
+				try :
+					data = data[best_features].values
+				except:
+					print('[ ! ] ERROR in compute_set_loss : keeping best features')
+					print('[ ! ] best features :', best_features)
+					traceback.print_exc()
+					exit()
+			else:
+				# Remove index column
+				data = data.values[:,1:]
+
+			# Compute file cost
+			try:
+				file_cost = self.sess.run(self.cost, feed_dict={self.input:data}) 
+				cost += (file_cost / data.shape[0])
+			except:
+				print('[ ! ] Error when computing average loss :', file)
+				traceback.print_exc()
+				exit()
+				
+
+		return cost
+
+
+	def predict(self, data, threshold, batch_size):
+		'''
+			Computes the nb of positives and negatives in data for a given threshold
+			Parameters 
+				data 	  : samples to test
+				threshold : detection threshold
+				batch_size: if > 1, the threshold is compared the average batch loss 
+			Output 
+				n_positive: number of anomalous samples in data
+				n_negative: number of normal samples in data
+		'''
+
+		n_positive = 0
+		n_negative = 0
+
+		#--- Sing sample prediction
+		if batch_size == 1:
+			for i in range(data.shape[0]):
+				sample = np.reshape(data[i], (1, data.shape[1]))
+				cost = self.sess.run(self.cost, feed_dict={self.input:sample})
+
+				if cost >= threshold:
+					n_positive += 1
+
+		#--- Batch prediction
+		elif batch_size > 1:
+			# Compute number of batches
+			batch_count = int(data.shape[0] / batch_size)+1
+
+			for i in range(batch_count):			
+				# Get batch
+				batch = tmp[i*batch_size:(i+1)*batch_size,:]
+				
+				try:
+					# Compute batch cost
+					batch_cost = self.sess.run(self.cost, feed_dict={self.input:batch}) 
+					if batch_cost > threshold:
+						n_positive += batch_size
+				except:
+					print('[ ! ] A batch has not been predicted')
+					break
+
+		#--- Batch size error
+		else:
+			exit('[ ! ] ERROR in predict() : Score batch size must be > or = to 1')
+
+		n_negative = data.shape[0] - n_positive
+		return n_positive, n_negative
+
+
+	def plot_roc(self, strt_thr, end_thr, step, files_test_normal, files_test_anomalous, batch_size, best_features):
+
+		print('[ + ] Computing ROC curve using :')
+		print('\t[-->] Threshold from 0 to', end_thr)
+		print('\t[-->] Step :', step)
+		print('\t[-->] ROC curve has', int(end_thr/step),'points')
+
+		# Init empty arrays for points coordinates
+		a_vp = []
+		a_vn = []
+		a_fp = []
+		a_fn = []
+
+		# For every threshold...
+		for thr in drange(strt_thr, end_thr, step):
+			tot_vn = 0
+			tot_vp = 0
+			tot_fn = 0
+			tot_fp = 0
+			n_sample_norm = 0
+			n_sample_anom = 0
+
+			# Compute predictions for normal test set
+			for file in files_test_normal:
+
+				# Read file
+				data = read_csv(file)
+				if best_features is not None:
+					try :
+						data = data[best_features].values
+					except:
+						print('[ ! ] ERROR in plot_roc : keeping best features:')
+						print('[ ! ] best features :', best_features)
+						traceback.print_exc()
+						exit()
+				else:
+					# Removes index column
+					data = data.values[:, 1:]
+
+				# Predict file with current threshold
+				fp, vn = self.predict(data, thr, batch_size)
+				
+				# Update true/false positives count
+				n_sample_norm += data.shape[0]
+				tot_vn += vn
+				tot_fp += fp
+
+
+			# Compute predictions for anomalous test set
+			for file in files_test_anomalous:
+
+				# Read file
+				data = read_csv(file)
+				if best_features is not None:
+					try :
+						data = data[best_features].values
+					except Exception:
+						print('[ ! ] ERROR in plot_roc : keeping best features')
+						print('[ ! ] best features :', best_features)
+						traceback.print_exc()
+						exit()
+				else:
+					# Removes index column
+					data = data.values[:, 1:]
+				
+				# Predict file with current threshold
+				vp, fn = self.predict(data, thr, batch_size)
+				
+				# Update 
+				n_sample_anom += data.shape[0]
+				tot_vp += vp
+				tot_fn += fn
+
+			vp_rate = tot_vp/n_sample_anom # Append for ROC curve
+			vn_rate = tot_vn/n_sample_norm
+			fp_rate = tot_fp/n_sample_norm # Append for ROC curve
+			fn_rate = tot_fn/n_sample_norm
+
+			print('-----')
+			print('True Positive Rate  :', vp_rate)
+			print('False Positive Rate :', fp_rate)
+
+			a_vp.append(vp_rate)
+			a_vn.append(vn_rate)
+			a_fp.append(fp_rate)
+			a_fn.append(fn_rate)
+
+		# Save roc curve
+		filename = './roc/' + self.model_name + '.png'
+		plot(a_fp, a_vp, filename)
+
+		return a_fp, a_vp
+		
+
+	def restore(self, path):
+		# Restore variables from disk.
+		self.saver.restore(self.sess, path)
+
+
+	#---------------------------------------------------#
+	#					FOR DEBUG 						#
+	#---------------------------------------------------#
+
+
+	# Use if train set is one big csv file
+	def train(self, X, batch_size, training_epochs):
+
+		total_batch = int(X.shape[0] / batch_size)
+		
+		for epoch in range(training_epochs):
+			total_loss  = 0.
+			total_loss_cost_bh = 0.
+			current_pos = 0
+
+			for b in range(total_batch+1):
+				
+				batch = tmp[b*batch_size:(b+1)*batch_size,:]
+
+				_, loss = self.sess.run([self.optimizer, self.cost], feed_dict={self.input:batch})
+
+				'''
+				#--- Debug
+				origin, recons = self.sess.run([self.input, self.output], feed_dict={self.input:batch})			
+				cost_bh = self.sess.run(self.cost_bh, feed_dict={self.A:origin, self.B:recons})
+				total_loss_cost_bh += (cost_bh / total_batch)
+				#----------
+				'''
+
+				total_loss += (loss / total_batch)
+				#print('batch loss :', loss)
+
+			print('EPOCH ', epoch+1, '/', training_epochs)
+			print('Loss :', total_loss)
+			print('Cost by hand :', total_loss_cost_bh)
+
+	# Use if test set is one big csv file
+	def plot_roc_simple(self, end_thr, step, test_normal, test_anomalous):
+		a_vp = []
+		a_vn = []
+		a_fp = []
+		a_fn = []
+
+		n_sample_norm = test_normal.shape[0]
+		n_sample_anom = test_anomalous.shape[0]
+
+		for i in drange(0, end_thr, step):
+			
+			# Predict file with current threshold
+			fp, vn = self.predict(test_normal, i)
+			
+			# Predict file with current threshold
+			vp, fn = self.predict(test_anomalous, i)
+			
+			# Compute rates
+			vp_rate = vp/n_sample_anom #
+			vn_rate = vn/n_sample_norm
+			fp_rate = fp/n_sample_norm #
+			fn_rate = fn/n_sample_anom
+
+			print('-- threshold =', i)
+			print('fp_rate :', fp_rate)
+			print('vp_rate :', vp_rate)
+
+			# Append points for ROC curve
+			a_vp.append(vp_rate)
+			a_vn.append(vn_rate)
+			a_fp.append(fp_rate)
+			a_fn.append(fn_rate)
+
+		# Saving file
+		filename = './roc/' + self.model_name + '.png'
+		plot(a_fp, a_vp, filename)
+
+		return a_fp, a_vp

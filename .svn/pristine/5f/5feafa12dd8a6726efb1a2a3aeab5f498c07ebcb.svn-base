@@ -1,0 +1,423 @@
+# Creates a dataset from multiple csv files
+
+import numpy as np
+import csv
+import os
+import operator
+import math
+
+import warnings
+
+from math import floor
+from itertools import islice, tee
+from scipy.interpolate import UnivariateSpline, InterpolatedUnivariateSpline, interp1d, LSQUnivariateSpline
+from collections import OrderedDict
+
+
+'''
+SENSORS = ['ACCELERATOR_POS_D', 'ACCELERATOR_POS_E', 'AMBIANT_AIR_TEMP', 'CATALYST_TEMP_B1S1', 'COMMANDED_EGR',
+'CONTROL_MODULE_VOLTAGE', 'COOLANT_TEMP', 'EGR_ERROR', 'ENGINE_LOAD', 'FUEL_INJECT_TIMING', 
+'FUEL_RAIL_PRESSURE_DIRECT', 'INTAKE_PRESSURE', 'INTAKE_TEMP', 'MAF', 'RPM', 'SPEED', 'THROTTLE_ACTUATOR',
+'THROTTLE_POS']
+'''
+#SENSORS = ['SPEED', 'RPM']
+
+#SENSORS = 'SPEED'
+
+#-------------------------------------------------------------------------------#
+# 							OUT OF THE CLASS METHODS 							#
+#-------------------------------------------------------------------------------#
+
+def load_raw_data(sensors, path_to_csv):
+	'''
+		Création du dictionnaire
+		parcours du fichier
+		pour chaque ligne on extrait les 3 paramètres de la ligne 	
+		Si le nom du capteur est une key du dictionnaire, on ajoute (temps, valeur_capteur)
+		sinon on ajoute la clé et le tuple (temps, valeur_capteur)
+	'''
+	print('[...] Processing', path_to_csv)
+
+	data = {}
+	time = []
+	count = 0
+
+	with open(path_to_csv, newline='') as f:
+		reader = csv.reader((line.replace('\0','') for line in f), delimiter=',')
+		for row in [x for x in reader if len(x)==3 and x[1] in sensors]:
+			label = 'raw_'+row[1]
+				
+			if label in data:
+				# Skip line if format is OK but there's still a problem with it
+				try:
+					data.get(label).append((floor(float(row[0])), float(row[2])))
+					if floor(float(row[0])) not in time:
+						time.append(floor(float(row[0])))
+				except:
+					pass
+			else:
+				# Skip line if format is OK but there's still a problem with it
+				try:
+					data[label] = [(floor(float(row[0])), float(row[2]))]
+					count += 1
+					if floor(float(row[0])) not in time:
+						time.append(floor(float(row[0])))
+				except:
+					pass
+
+	data = OrderedDict(sorted(data.items()))
+
+	return data, time
+
+
+def window(it, size=3):
+	'''
+		Split an array in iterable array of size n
+
+		Parameters :
+			it : array to split
+			size : size of the window
+		Return :
+			Iterable object that contains all the windows
+	'''
+	yield from zip(*[islice(it, s, None) for s, it in enumerate(tee(it, size))])
+
+def moving_average(values, window_size):
+	'''
+		Compute moving average for an array of values using
+		a window
+
+		Parameters:
+			values : orginal array
+			window_size : size of the window
+		Return :
+			sma : moving average array
+	'''
+	weights = np.repeat(1.0, window_size)/window_size
+	sma = np.convolve(values, weights, 'same')
+	return sma
+
+
+
+#-------------------------------------------------------------------------------#
+# 						========= 	CLASS 	=========							#
+#-------------------------------------------------------------------------------#
+
+class DatasetCreator(object):
+	"""
+		Loads csv file
+		Creates raw dataset and compute complete dataset
+	"""
+
+	def __init__(self, dataset_name, out_data, data=None, labels={}):
+		
+		self._name 	 = dataset_name
+		self.out_data= out_data
+		
+		self._data 	 = data
+		self._labels = labels
+		self._splines= {}
+
+		self._duration = 0
+
+
+	@property
+	def shape(self):
+		return self._data.shape
+
+	@property
+	def labels(self):
+		return self._labels
+
+	@property
+	def n_sample(self):
+		_, n = self._data.shape
+		return n
+
+	@property 
+	def n_sensor(self):
+		n, _ = self._data.shape
+		return n-1
+
+	@property
+	def sensors(self):
+		return list(self._labels.keys())
+
+	@property
+	def is_empty(self):
+		if self._data is None:
+			return True
+		else: 
+			return False
+
+	#-------------------------------------------------------------------------------#
+	# 							DATA INITIALIZATION		 							#
+	#-------------------------------------------------------------------------------#
+	
+	def construct_table(self, data, time):
+		
+		# Get min and max dates
+		mind, maxd = (time[0], time[-1]-time[0])
+
+		# Update max date for file
+		self._duration = maxd
+
+		result = np.ones(shape=(len(data)+1, maxd))
+		result.fill(np.nan)
+		result[0] = np.arange(maxd)
+				
+		# Remplissage de la table résultante
+		for label in data:
+			lig = self._labels[label]
+
+			for (t, value) in data[label]:
+				try:
+					result[lig][t-mind-1] = value
+				except IndexError:
+					pass
+		self._data = result
+
+	def init_dataset_from(self, sensors, path):
+		"""
+			Initialisation du dataset
+		"""
+		data, time = load_raw_data(sensors, path)
+
+		# If data is empty return None
+		if not data:
+			self._data = None
+			return None
+
+		# If one of the sensors array is empty return None
+		for sensor in data:
+			if len(data[sensor]) < 1:
+				self._data = None
+				return None
+
+		# Init labels dict
+		self._labels = {}
+		l = list(data.keys())
+		l.insert(0, 'Time')
+		for label in l:
+			self._labels[label] = l.index(label)
+
+		# First construct table with nan
+		self.construct_table(data, time)
+
+		# Test raw matrix shape to check if there's the right nb of sensors
+		if self.n_sensor != len(sensors):
+			print('[ ! ] Error during dataset init')
+			print('[-->] Data should have', len(sensors), 'sensors but has', self.n_sensor)
+			return None
+
+		# Export to csv for raw visualization
+		filename = self.out_data + '/raw/'+self._name
+		self.to_csv(file=filename)
+
+		# Compute spline for all time series
+		self.compute_splines(data, time)
+
+		# Init dataset with approximated values
+		self.build_dataset(time)
+		
+	def compute_splines(self, data, time):
+		
+		# Get min and max dates
+		mind, maxd = (time[0], time[-1]-time[0])
+
+		self._splines = {}
+		
+		for sensor in data:
+			values = [x[1] for x in data[sensor]]
+			dates  = [x[0]-mind for x in data[sensor]]
+
+			# Start and end time series with 0 values
+			# so approximated points are not out of bounds
+			dates.insert(0,0)
+			values.insert(0,-1)
+			dates.append(self._duration+1)
+			values.append(0)
+
+			spl = interp1d(dates, values, kind='nearest', bounds_error=False)
+
+			self._splines[sensor] = spl
+			
+
+		
+	def build_dataset(self, time):
+		# Get min and max dates
+		mind, maxd = (time[0], time[-1]-time[0])
+		
+		result = np.ones(shape=(len(self._splines)+1, maxd))
+		result.fill(np.nan)
+		result[0] = np.arange(maxd)	
+		
+		# Computing interpolated/approximated values
+		for sensor in self._splines:
+			result[self._labels[sensor]] = self._splines[sensor](result[0])		
+	
+		# Updating self 
+		self._data = result
+		
+	
+	def to_csv(self, file):
+		'''
+			Save dataset to csv
+		'''
+		# Sort labels by sensor index
+		labels = ','.join([x[0] for x in sorted(self._labels.items(), key=operator.itemgetter(1))])
+		np.savetxt(file, self._data.T, header=labels, delimiter=',')
+		
+
+	#-------------------------------------------------------------------------------#
+	# 						DATA INTERPOLATION & CLEANING							#
+	#-------------------------------------------------------------------------------#
+
+	def check_values(self):
+		'''
+			Remplace les nan par 0
+		'''
+		#self._data[np.isnan(self._data)] = 0
+
+		tmp = self._data[self._labels['raw_SPEED']]
+		tmp[tmp<0] = 0
+		self._data[self._labels['raw_SPEED']] = tmp
+
+	def nan_checker(self):
+		if np.isnan(self._data).any(): 
+			print('[ ! ] NANs detected at sensor')
+
+
+	#-------------------------------------------------------------------------------#
+	# 							FEATURES CREATION 									#
+	#-------------------------------------------------------------------------------#
+	'''
+	def add_derivatives(self):
+		"""
+			Add 1st and 2nd derivative
+			Using splines
+		"""
+		for label in self._splines: 
+			#--- Get 1st and 2nd derivative
+			d1 = self._splines[label].derivative(n=1)
+			d2 = self._splines[label].derivative(n=2)
+
+			new1 = d1(self._data[0])
+			new2 = d2(self._data[0])
+
+			#-- removing nans
+			nans1 = np.isnan(new1)
+			nans2 = np.isnan(new2)
+			new1[nans1] = 0
+			new2[nans2] = 0 
+			
+			#--- Add 1st derivative to self._data		
+			self._data = np.vstack((self._data, new1))
+			
+			#--- Add 2st derivative to self._data
+			self._data = np.vstack((self._data, new2))
+			
+			#Append labels
+			l = 'd1_'+label[4:]
+			self._labels[l] = max(self._labels.values())+1
+			l = 'd2_'+label[4:]
+			self._labels[l] = max(self._labels.values())+1
+	'''
+
+	def add_derivatives(self):
+		'''
+			Add 1st and 2nd derivative
+			Using linear interpolation
+		'''
+		for label in self._splines:
+			d1 = np.diff(self._data[self._labels[label]]) / np.diff(self._data[0])
+			d1 = np.insert(d1, 0, 0)
+			
+			d2 = np.diff(d1) / np.diff(self._data[0])
+			d2 = np.insert(d2, 0, 0)
+
+			#-- removing nans
+			nans1 = np.isnan(d1)
+			nans2 = np.isnan(d2)
+			d1[nans1] = 0
+			d2[nans2] = 0 
+
+			# Update self._data and self._labels
+			l = 'd1_'+label[4:]
+			self._labels[l] = max(self._labels.values())+1
+			self._data = np.vstack((self._data, d1))
+
+			l = 'd2_'+label[4:]
+			self._labels[l] = max(self._labels.values())+1
+			self._data = np.vstack((self._data, d2))
+
+
+
+	def add_std(self, windows):
+		'''
+			Ajout de l'ecart-type sur la fenêtre d'étude pour 
+			chaque capteur
+		'''
+		_, length = self._data.shape
+		
+		for label in [x for x in self._labels if x[0]=='r']:
+			
+			for n in windows:
+				tmp = np.ones(length)
+				start = floor(n/2)
+				
+				# For every window, compute std
+				for l in window(self._data[self._labels[label]], n):
+					tmp[start] = np.std(l)
+					start = start+1
+					
+				# Update dataset with new feature	
+				self._data = np.vstack((self._data, tmp))
+					
+				# Append label	
+				l = 'std_w'+str(n)+'_'+label[4:]
+				self._labels[l] = max(self._labels.values())+1
+
+	def add_moving_average(self, windows):
+		'''
+			Ajout de la moyenne glissante sur n secondes
+			Parameters :
+				windows : taille des fenetres
+				append_label : ajout du label si necessaire
+		'''
+		_, length = self._data.shape
+
+		# For every sensor
+		for label in [x for x in self._labels if x[0]=='r']:
+			
+			# Compute moving average for every window size
+			for w in windows:
+				mva = moving_average(self._data[self._labels[label]], window_size=w)
+				tmp = np.zeros(length)
+				tmp = mva
+				self._data = np.vstack((self._data, tmp))
+
+				# Append labels
+				l = 'ma_'+str(w)+'_'+label[4:]
+				self._labels[l] = max(self._labels.values())+1
+		
+
+	#-------------------------------------------------------------------------------#
+	# 							ADD ALL FEATURES 									#
+	#-------------------------------------------------------------------------------#	
+
+	def add_all_features(self, std_win, mv_avg_win):
+		
+		# Check for nans
+		self.nan_checker()		
+
+		# Add all features features
+		self.add_moving_average(windows=mv_avg_win)
+		self.add_std(windows=std_win)
+		self.add_derivatives()
+		
+		# Add to csv
+		filename = self.out_data + '/not_normalized/' + self._name
+		self.to_csv(file=filename)
+
+		

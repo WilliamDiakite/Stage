@@ -1,0 +1,106 @@
+import numpy as np
+import tensorflow as tf
+
+import matplotlib.pyplot as plt
+
+from keras.models import Sequential
+from keras.optimizers import SGD
+from keras.layers.core import Dense, Activation, Flatten
+from keras.layers.recurrent import SimpleRNN
+from keras.layers.wrappers import TimeDistributed
+
+from sine_data_gen import gen_sin
+
+
+
+
+seed = 1006
+np.random.seed(seed)
+
+
+# Generate data
+X, Y = gen_sin(nb_chunks=20)
+time = np.arange(X.shape[0])
+
+'''
+# Plot curves
+plt.plot(time[:500], X[:500])
+plt.plot(time[:500], Y[:500])
+plt.show()
+'''
+
+# Split into train and test set
+end_learn = int(len(X) * 0.7)
+X_train = X[:end_learn]
+X_test = X[end_learn:]
+Y_train = Y[:end_learn]
+Y_test = Y[end_learn:]
+
+
+# Change shapes for sequential model
+X_train = X_train.reshape(X_train.shape + (1,))
+X_test = X_test.reshape(X_test.shape + (1,))
+Y_train = Y_train.reshape(Y_train.shape + (1,))
+Y_test = Y_test.reshape(Y_test.shape + (1,))
+
+X_train = np.reshape(X_train, (X_train.shape[0], 1, X_train.shape[1]))
+X_test = np.reshape(X_test, (X_test.shape[0], 1, X_test.shape[1]))
+Y_train = np.reshape(Y_train, (Y_train.shape[0], 1, Y_train.shape[1]))
+Y_test = np.reshape(Y_test, (Y_test.shape[0], 1, Y_test.shape[1]))
+
+
+# Define model
+model = Sequential()
+model.add(SimpleRNN(units=64	,
+					activation='tanh',
+					input_shape=(1, X_train.shape[2]),
+					return_sequences=True))
+model.add(SimpleRNN(units=32	,
+					activation='tanh',
+					return_sequences=True))
+model.add(TimeDistributed(Dense(units=X_train.shape[2], activation='linear')))
+
+# Define training opt
+sgd = SGD(lr=0.0001, momentum=0.95, nesterov=True)
+model.compile(loss='mean_squared_error', optimizer=sgd)
+
+# Training model
+model.fit(X_train, Y_train, batch_size=10, epochs=100)
+
+# Compute mean squared errors
+score_train = model.evaluate(X_train, Y_train, batch_size=10)
+score_test  = model.evaluate(X_test, Y_test, batch_size=10)
+
+print()
+print('Train MSE :', round(score_train, 6))
+print('Test MSE  :', round(score_test, 6))
+
+
+# compute squared errors (on test set only)
+Y_predict = model.predict(X_test)
+assert(Y_predict.shape == Y_test.shape)
+se = (Y_test - Y_predict)**2
+print(se.shape)
+
+
+# Reshape for plot
+Y_test = np.reshape(Y_test, (Y_test.shape[0], ))
+Y_predict = np.reshape(Y_predict, (Y_predict.shape[0], ))
+se = np.reshape(se, (se.shape[0], ))
+
+# Plot Y_test, Y_predict and squarred error on same figure
+time = np.arange(Y_test.shape[0])
+plt.subplot(311)
+plt.plot(time[:250], Y_test[:250])
+plt.title('Target signal')
+
+plt.subplot(312)
+plt.plot(time[:250], Y_predict[:250])
+plt.title('Reconstructed signal')
+
+plt.subplot(313)
+plt.plot(time[:250], se[:250])
+plt.title('Squared error')
+
+plt.show()
+
