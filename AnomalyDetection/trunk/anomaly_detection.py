@@ -14,8 +14,7 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 from utils import DatasetInfo, drange
-#from class_autoencoder_2 import Autoencoder
-from shit import Autoencoder
+from class_autoencoder import Autoencoder
 
 from feature_selection import get_best_features
 
@@ -72,7 +71,7 @@ learning_rate 	= 0.001
 momentum 		= 0.95
 optimizer		= tf.train.RMSPropOptimizer(learning_rate, momentum)
 batch_size		= 100
-epochs 			= 30
+epochs 			= 100
 file_start 		= 0.0
 file_end   		= 1
 
@@ -149,15 +148,18 @@ def write_summary(train_loss, valid_loss, anomal_loss,
 
 	if best_features is not None:
 		parameters.write('\nFeature selection : \n')
+		
 		# Change std to print directly in file
 		old_std = sys.stdout
 		sys.stdout = parameters
+		
 		# Draw table
 		table = BeautifulTable()
 		table.column_headers = ['Selected features']
 		for feature in best_features:
 			table.append_row([feature])
 		print(table)
+		
 		# restore original stdout
 		sys.stdout = old_std
 
@@ -177,11 +179,10 @@ if __name__ == '__main__':
 	from argparse import ArgumentParser
 	parser = ArgumentParser()
 	parser.add_argument('-feature_select', action='store_true', help='Apply feature selection, only keep best features during training and testing')
+	parser.add_argument('-user_thr', action='store_true', help='Ask for maximum threshold and step just after training')
+	parser.add_argument('-display_curves', action='store_true', help='Display losses curves and Roc curve after training and scoring.')
 	parser.add_argument('name', type=str, help='Name of the model')
 	args = parser.parse_args()
-
-	# Fix random seed for reproducibility
-	np.random.seed(7)
 
 	model_name = args.name
 
@@ -194,6 +195,8 @@ if __name__ == '__main__':
 		bf = get_best_features(dataset_path, k_best, min_feature_importance)
 	else:
 		bf = None
+
+	print('DIM',len(bf))
 	
 	
 	# Initialize a data information collector
@@ -230,26 +233,28 @@ if __name__ == '__main__':
 	training_time = time.time() - train_start
 
 	#--- Plot loss curves 
+	if args.display_curves:
+		
+		plt.figure(figsize=(12, 6))
+		plt.plot(np.array(range(0, len(train_loss))) / float(len(train_loss) - 1) * (len(train_loss) - 1),
+																									    np.log(train_loss),
+																									    label="Train set loss")
+		if valid_loss:
+			plt.plot(np.log(valid_loss), label="Validation set loss")
 
-	plt.figure(figsize=(12, 6))
-	plt.plot(np.array(range(0, len(train_loss))) / float(len(train_loss) - 1) * (len(train_loss) - 1),
-																								    np.log(train_loss),
-																								    label="Train set loss")
-	if valid_loss:
-		plt.plot(np.log(valid_loss), label="Validation set loss")
+		if anomal_loss:
+			plt.plot(np.log(anomal_loss), label="Anomalous set loss")
 
-	if anomal_loss:
-		plt.plot(np.log(anomal_loss), label="Anomalous set loss")
+		plt.title("Training errors over time (on a logarithmic scale)")
+		plt.xlabel('Iteration')
+		plt.ylabel('log(Loss)')
+		plt.legend(loc='best')
+		plt.show()
 
-	plt.title("Training errors over time (on a logarithmic scale)")
-	plt.xlabel('Iteration')
-	plt.ylabel('log(Loss)')
-	plt.legend(loc='best')
-	plt.show()
-
-
-	end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
-	step_thr= float(input('[ ? ] Choose a threshold step : '))
+	#--- Ask for ROC parameters
+	if args.user_thr:
+		end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
+		step_thr= float(input('[ ? ] Choose a threshold step : '))
 
 	# Compute roc curve
 	false_positives, true_positives = model.get_roc(start_thr, end_thr, step_thr, 
