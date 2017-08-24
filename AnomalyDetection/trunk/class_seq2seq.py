@@ -1,5 +1,6 @@
 # coding: utf-8
 
+
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -94,15 +95,15 @@ class seq2seq(object):
 		    output_scale_factor = tf.Variable(1.0, name="Output_ScaleFactor")
 		    # Final outputs: with linear rescaling similar to batch norm,
 		    # but without the "norm" part of batch normalization hehe.
-		    reshaped_outputs = [output_scale_factor *
+		    self.reshaped_outputs = [output_scale_factor *
 		                        (tf.matmul(i, w_out) + b_out) for i in dec_outputs]
 
 
 		with tf.variable_scope('Loss'):
 		    # L2 loss
 		    output_loss = 0
-		    for _y, _Y in zip(reshaped_outputs, self.expected_sparse_output):
-		        output_loss += tf.reduce_mean(tf.nn.l2_loss(_y - _Y))
+		    for _y, _Y in zip(self.reshaped_outputs, self.expected_sparse_output):
+		        output_loss += tf.reduce_mean(tf.square(tf.nn.l2_loss(_y - _Y)))
 
 		    # L2 regularization (to avoid overfitting and to have a better
 		    # generalization capacity)
@@ -150,14 +151,22 @@ class seq2seq(object):
 		if batch.ndim == 1:
 			batch = np.reshape(batch, (self.seq_length, 1, batch.shape[0]))
 
-		try:
-			feed_dict = {self.enc_inp[t]: batch[t] for t in range(len(self.enc_inp))}
-			feed_dict.update({self.expected_sparse_output[t]: batch[t] for t in range(len(self.expected_sparse_output))})
-			loss_t = self.sess.run([self.loss], feed_dict)
-		except:
-			exit('[ ! ] ERROR test_batch(...) : cannot test batch with shape {}'.format(batch.shape))
+		
+		feed_dict = {self.enc_inp[t]: batch[t] for t in range(len(self.enc_inp))}
+		feed_dict.update({self.expected_sparse_output[t]: batch[t] for t in range(len(self.expected_sparse_output))})
+		loss_t = self.sess.run([self.loss], feed_dict)
+		
 
 		return loss_t[0] / batch.shape[1]
+
+
+	def predict_batch(self, batch):
+		'''
+			Computes prediction of a batch
+		'''
+		feed_dict = {self.enc_inp[t]: batch[t] for t in range(self.seq_length)}
+		outputs = self.sess.run([self.reshaped_outputs], feed_dict)[0]
+		return outputs
 
 
 	def train(self, train_file_list, validation_file_list=None, anomalous_file_list=None, best_features=None, epoch=200):
@@ -188,19 +197,22 @@ class seq2seq(object):
 			# Compute losses to display
 			if e%10 == 0:
 
+				#print('One sample time step : ', data[0,0,:])
+				#print('Prediction', self.predict_batch(data)[0,0,:])
+
 				# Computes average loss on train files
 				avg_loss = np.average(np.asarray(losses))
 				avg_train_losses.append(avg_loss)
 				
+				# Compute validation loss
 				if validation_file_list is not None:
-					# Compute validation loss
 					avg_val_loss = self.compute_set_loss(validation_file_list, best_features)
 					avg_valid_losses.append(avg_val_loss)
 				else:
 					avg_val_loss = np.nan
 				
+				# Compute anomlous set loss
 				if anomalous_file_list is not None:
-					# Compute anomlous set loss
 					avg_ano_loss = self.compute_set_loss(anomalous_file_list, best_features)
 					avg_anomalous_losses.append(avg_ano_loss)
 				else:
@@ -232,10 +244,6 @@ class seq2seq(object):
 		return avg_loss
 		
 
-	def predict_batch(self, batch):
-		feed_dict = {self.enc_inp[t]: batch[t] for t in range(self.seq_length)}
-		outputs = np.array(sess.run([reshaped_outputs], feed_dict)[0])
-
 
 	def predict(self, data, threshold):
 		'''
@@ -260,7 +268,6 @@ class seq2seq(object):
 				n_negative += 1
 
 		return n_positive, n_negative
-
 
 
 	def get_roc(self, strt_thr, end_thr, step, files_test_normal, files_test_anomalous, best_features):
@@ -342,6 +349,8 @@ class seq2seq(object):
 		return a_fp, a_vp
 
 
+
+
 def keep_best_features(data, best_features):
 	'''
 		Drop not wanted features if 
@@ -358,6 +367,6 @@ def keep_best_features(data, best_features):
 			exit()
 	else:
 		# Remove index column
-		data_matrix = data.values
+		data_matrix = data.values[:,:1]
 
 	return data_matrix

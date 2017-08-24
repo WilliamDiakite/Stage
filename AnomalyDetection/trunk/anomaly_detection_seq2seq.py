@@ -21,20 +21,20 @@ from seq2seq_data_preparation import get_seq2seq_batch
 
 
 # Path to "normal" dataset
-dataset_path 	= './../../Ressources/Generated_files/Datasets/fast'
+dataset_path 	= './../../Ressources/Generated_files/Datasets/demo'
 
 #------ Hyperparameters ------#
 
 # Architecture
 seq_length = hidden_dim = 20
-layers_stacked_count = 5
+layers_stacked_count = 3
 
 # Learning parameters
 learning_rate = 0.0007
 lr_decay = 0.92
 momentum = 0.9
 
-epoch = 20
+epoch = 500
 batch_size = 10
 #-----------------------------#
 
@@ -54,11 +54,14 @@ min_feature_importance = 0.5
 
 
 
-def get_data_shape(file_list):
-	try:
-		data = pd.read_csv(file_list[0]).values
-	except:
-		exit('[ ! ] ERROR get_data_shape(..) : reading data failed')
+def get_data_shape(file_list, best_features):
+	
+	data = pd.read_csv(file_list[0])
+
+	if best_features is not None:
+		data = data[best_features].values
+	else:
+		data = data.values[1:]
 
 	data = get_seq2seq_batch(data, seq_length, batch_size)
 	return data.shape
@@ -157,7 +160,7 @@ if __name__ == '__main__':
 
 	# Load data and get shape 
 	train_files, test_files_n, test_files_a = utils.get_dataset_files(dataset_path)
-	data_shape = get_data_shape(train_files)
+	data_shape = get_data_shape(train_files, bf)
 
 
 	#--- Train seq2seq model 

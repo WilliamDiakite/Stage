@@ -54,7 +54,7 @@ Optimizers :
 #--- DATA PATH ---#
 
 # Path to "normal" dataset
-dataset_path 	= './../../Ressources/Generated_files/Datasets/fast'
+dataset_path 	= './../../Ressources/Generated_files/Datasets/demo'
 
 # Stored models
 stored_models = './Saved_models/'
@@ -63,7 +63,7 @@ stored_models = './Saved_models/'
 #--- MODEL PARAMETERS ---#
 
 # Model architecture (hidden layers only)
-hidden_layers = [4, 1]
+hidden_layers = [5, 2]
 
 # Learning parameters
 activation		= tf.nn.tanh
@@ -71,7 +71,7 @@ learning_rate 	= 0.001
 momentum 		= 0.95
 optimizer		= tf.train.RMSPropOptimizer(learning_rate, momentum)
 batch_size		= 100
-epochs 			= 100
+epochs 			= 700
 file_start 		= 0.0
 file_end   		= 1
 
@@ -87,7 +87,7 @@ step_thr = 0.05
 
 
 #--- Feature selection ---#
-k_best = 3
+k_best = 5
 min_feature_importance = 0.5
 
 
@@ -128,7 +128,14 @@ def write_summary(train_loss, valid_loss, anomal_loss,
 	parameters.write('Dataset : {}\n'.format(dataset_path))
 
 	parameters.write('\nInput dimension : {}\n'.format(io_dim))
+	'''
+	hidden_layers.sort()
+	dec = hidden_layers
+	hidden_layers.reverse()
+	hidden_layers = hidden_layers + dec[1:]
+	'''
 	parameters.write('Hidden layers : {}\n'.format(hidden_layers))
+	
 	parameters.write('Output dimension : {}\n'.format(io_dim))
 
 	parameters.write('\nBatch size : {}\n'.format(batch_size))
@@ -196,9 +203,7 @@ if __name__ == '__main__':
 	else:
 		bf = None
 
-	print('DIM',len(bf))
-	
-	
+
 	# Initialize a data information collector
 	di = DatasetInfo(dataset_path)
 	#train_files, test_files_n, test_files_a = utils.get_dataset_files(dataset_path)

@@ -1,0 +1,36 @@
+Document creation : Thu Aug 24 11:21:01 2017
+Model name : seq2
+Model type : seq2seq
+Dataset : ./../../Ressources/Generated_files/Datasets/fast
+
+Sequence length : 20
+Sequence dimension : 5Stacked layers count : 3
+Batch size : 10
+Epochs : 20
+
+Optimizer : RMSprop
+Learning rate decay : 0.92
+Learning rate : 0.0007
+Momentum : 0.9
+
+Training time : 01:00:42
+
+ROC settings :
+	Threshold start : 0
+	Threshold end : 700
+	Step : 140
+
+Feature selection : 
++-------------------+
+| Selected features |
++-------------------+
+|     d2_SPEED      |
++-------------------+
+|      d1_RPM       |
++-------------------+
+|     raw_SPEED     |
++-------------------+
+|     ma_12_RPM     |
++-------------------+
+|    ma_12_SPEED    |
++-------------------+
