@@ -1,0 +1,6 @@
+Document creation : Thu Aug 24 13:55:30 2017
+Model name : demo_autoencoder
+Model type : autoencoder
+Dataset : ./../../Ressources/Generated_files/Datasets/demo
+
+Input dimension : 17
