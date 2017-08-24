@@ -65,8 +65,8 @@ def get_data_shape(file_list):
 
 
 def write_summary(train_loss, valid_loss, anomal_loss, 
-				start_thr, end_thr, false_positives, true_positives,
-				training_time, best_features, io_dim):
+					start_thr, end_thr, false_positives, true_positives,
+					training_time, best_features, io_dim):
 	'''
 		Saves losses curves, roc curves and model parameters 
 	'''
@@ -196,8 +196,8 @@ if __name__ == '__main__':
 
 	#--- Compute ROC Curve 
 	if args.user_thr:
-		end_thr = int(input('[ ? ] Choose the max threshold for ROC curve : '))
-		step_thr= int(input('[ ? ] Choose a threshold step : '))
+		end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
+		step_thr= float(input('[ ? ] Choose a threshold step : '))
 
 
 	false_positives, true_positives = model.get_roc(strt_thr=start_thr, 
