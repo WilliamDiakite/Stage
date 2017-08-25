@@ -1,5 +1,0 @@
-set datafile separator ","
-raw = "big_ofa/normal/raw/1.csv"
-norm = "big_ofa/normal/not_normalized/1.csv"
-plot raw u 1:2 , norm u 1:2 with line
-pause -1
