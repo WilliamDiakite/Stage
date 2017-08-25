@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 from beautifultable import BeautifulTable
-from class_LSTMAutoencoder import LSTMAutoencoder 
+from class_LSTM import LSTM 
 from seq2seq_data_preparation import get_seq2seq_batch
 
 
@@ -26,22 +26,23 @@ dataset_path 	= './../../Ressources/Generated_files/Datasets/demo'
 #------ Hyperparameters ------#
 
 # Architecture
-hidden_dim = 20
+hidden_dim = 7
+layers_stacked_count = 3
 
 # Learning parameters
 learning_rate = 0.0007
 
-epoch = 80
-seq_length = 20
+epoch = 50
 batch_size = 10
+seq_length = 20
 #-----------------------------#
 
 
 #--- Detection parameters  ---#
 
 start_thr = 0
-end_thr = 200
-step_thr = 40
+end_thr = 700
+step_thr = 140
 #-----------------------------#
 
 
@@ -59,7 +60,7 @@ def get_data_shape(file_list, best_features):
 	if best_features is not None:
 		data = data[best_features].values
 	else:
-		data = data.values
+		data = data.values[1:]
 
 	data = get_seq2seq_batch(data, seq_length, batch_size)
 	return data.shape
@@ -67,7 +68,7 @@ def get_data_shape(file_list, best_features):
 
 def write_summary(train_loss, valid_loss, anomal_loss, 
 					start_thr, end_thr, false_positives, true_positives,
-					training_time, best_features):
+					training_time, best_features, io_dim):
 	'''
 		Saves losses curves, roc curves and model parameters 
 	'''
@@ -98,6 +99,8 @@ def write_summary(train_loss, valid_loss, anomal_loss,
 	parameters.write('Dataset : {}\n'.format(dataset_path))
 
 	parameters.write('\nSequence length : {}\n'.format(seq_length))	
+	parameters.write('Sequence dimension : {}'.format(io_dim))
+	parameters.write('Stacked layers count : {}\n'.format(layers_stacked_count))
 	parameters.write('Batch size : {}\n'.format(batch_size))
 	parameters.write('Epochs : {}\n'.format(epoch))
 
@@ -155,12 +158,11 @@ if __name__ == '__main__':
 	# Load data and get shape 
 	train_files, test_files_n, test_files_a = utils.get_dataset_files(dataset_path)
 	data_shape = get_data_shape(train_files, bf)
-	print(data_shape)
 
 
 	#--- Train seq2seq model 
 
-	model = LSTMAutoencoder(model_name, data_shape, hidden_dim, learning_rate)
+	model = LSTM(model_name, data_shape, hidden_dim, layers_stacked_count, learning_rate)
 
 	train_start = time.time()
 	train_loss, valid_loss, anomal_loss = model.train(train_file_list=train_files, 
@@ -205,6 +207,6 @@ if __name__ == '__main__':
 													files_test_anomalous=test_files_a, 
 													best_features=bf)
 	
-	write_summary(train_loss, valid_loss, anomal_loss, start_thr, end_thr, false_positives, true_positives,training_time, bf)
+	write_summary(train_loss, valid_loss, anomal_loss, start_thr, end_thr, false_positives, true_positives,training_time, bf, data_shape[2])
 
 	print('[DONE]')

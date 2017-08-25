@@ -1,30 +1,25 @@
-Document creation : Fri Aug 25 16:13:43 2017
-Model name : demo_autoencoder
-Model type : autoencoder
+Document creation : Fri Aug 25 16:51:34 2017
+Model name : demo_lstmae2
+Model type : seq2seq
 Dataset : ./../../Ressources/Generated_files/Datasets/demo
 
-Input dimension : 17
-Hidden layers : [2, 5]
-Output dimension : 17
+Sequence length : 20
+Batch size : 10
+Epochs : 80
 
-Batch size : 100
-Epochs : 300
+Optimizer : RMSprop
+Learning rate : 0.0007
 
-Optimizer : Adam
-Learning rate : 0.001
-
-Training time : 01:04:45
+Training time : 01:00:41
 
 ROC settings :
 	Threshold start : 0
-	Threshold end : 2.0
-	Step : 0.1
+	Threshold end : 200.0
+	Step : 2.0
 
 Feature selection : 
 +-----------------------+
 |   Selected features   |
-+-----------------------+
-|      ma_43_SPEED      |
 +-----------------------+
 | ma_43_INTAKE_PRESSURE |
 +-----------------------+
@@ -33,4 +28,6 @@ Feature selection :
 |       d1_SPEED        |
 +-----------------------+
 |       ma_43_RPM       |
++-----------------------+
+|      ma_43_SPEED      |
 +-----------------------+

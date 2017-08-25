@@ -13,7 +13,7 @@ from utils import drange
 
 
 
-class seq2seq(object):
+class LSTM(object):
 	def __init__(self, model_name, data_shape, hidden_dim, layers_stacked_count, learning_rate, lambda_l2_reg=0.003):
 
 
@@ -40,8 +40,6 @@ class seq2seq(object):
 
 		# Training hyperparameters
 		self.learning_rate = learning_rate
-		self.lr_decay = lr_decay
-		self.momentum = momentum
 
 
 		with tf.variable_scope('Seq2seq'):
@@ -103,7 +101,7 @@ class seq2seq(object):
 		    # L2 loss
 		    output_loss = 0
 		    for _y, _Y in zip(self.reshaped_outputs, self.expected_sparse_output):
-		        output_loss += tf.reduce_mean(tf.square(tf.nn.l2_loss(_y - _Y)))
+		        output_loss += tf.reduce_mean(tf.nn.l2_loss(_y - _Y))
 
 		    # L2 regularization (to avoid overfitting and to have a better
 		    # generalization capacity)
@@ -113,7 +111,8 @@ class seq2seq(object):
 		            reg_loss += tf.reduce_mean(tf.nn.l2_loss(tf_var))
 		    
 		    self.loss = output_loss + lambda_l2_reg * reg_loss
-
+		    
+		    
 
 		with tf.variable_scope('Optimizer'):
 			# Train operation
@@ -307,7 +306,7 @@ class seq2seq(object):
 				fp, vn = self.predict(data, thr)
 				
 				# Update true/false positives count
-				n_sample_norm += data.shape[0]
+				n_sample_norm += data.shape[1]
 				tot_vn += vn
 				tot_fp += fp
 
@@ -326,7 +325,7 @@ class seq2seq(object):
 				vp, fn = self.predict(data, thr)
 				
 				# Update 
-				n_sample_anom += data.shape[0]
+				n_sample_anom += data.shape[1]
 				tot_vp += vp
 				tot_fn += fn
 

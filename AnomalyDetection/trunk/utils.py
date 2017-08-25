@@ -235,7 +235,10 @@ def get_dataset_files_dumb(dataset_path):
 
 def get_dataset_files(dataset_path):
 	'''
-		returns file lists
+		Return 
+			train_files : train filepaths array
+			test_files_n: normal test filepaths array
+			test_files_a: anomalous test filespaths array
 	'''
 	print('[...] Retrieving datasets')
 
@@ -280,18 +283,28 @@ def get_dataset_files(dataset_path):
 
 
 def drange(start, stop, increment):
-    while start < stop:
-        yield start
-        start += increment
+	'''
+		Define for loop with floats
+	'''
+	while start < stop:
+		yield start
+		start += increment
 
 
-def save_roc(fp_rate, vp_rate, filename):
+def save_roc(fp_rate, tp_rate, filename):
+	'''
+		Save roc curve as .png
+
+		Parameters
+			fp_rate = false positive rates array
+			tp_rate = true positive rates array
+	'''
 
 	line_x = [0,1]
 
-	plt.figure(figsize=(12, 6))
+	plt.figure(figsize=(8, 8))
 
-	plt.plot(fp_rate, vp_rate, color="blue", linewidth=1.0, linestyle="-")
+	plt.plot(fp_rate, tp_rate, color="blue", linewidth=1.0, linestyle="-")
 	plt.plot(line_x, line_x, color="red", linewidth=1.0, linestyle="--")
 
 	plt.title('ROC Curve')
@@ -303,6 +316,9 @@ def save_roc(fp_rate, vp_rate, filename):
 
 
 def save_losses(train_loss, valid_loss, anomal_loss, filename):
+	'''
+		Save plot of training loss over time as .png
+	'''
 
 	plt.figure(figsize=(12, 6))
 	plt.plot(np.array(range(0, len(train_loss))) / float(len(train_loss) - 1) * (len(train_loss) - 1),
@@ -314,7 +330,7 @@ def save_losses(train_loss, valid_loss, anomal_loss, filename):
 		plt.plot(np.log(anomal_loss), label="Anomalous set loss")
 
 	plt.title("Training errors over time (on a logarithmic scale)")
-	plt.xlabel('Iteration')
+	plt.xlabel('Epochs')
 	plt.ylabel('log(Loss)')
 	plt.legend(loc='best')
 	plt.savefig(filename)
@@ -322,6 +338,10 @@ def save_losses(train_loss, valid_loss, anomal_loss, filename):
 
 
 def get_seq2seq_batch(data, seq_length, batch_size):
+	'''
+		Transpose data to shape (seq_length, batch_size, n_features)
+		Used for recurrent models !
+	'''
 	
 	# Read file
 	nb_features = data.shape[1]-1
@@ -335,32 +355,28 @@ def get_seq2seq_batch(data, seq_length, batch_size):
 
 		if seq.shape != (seq_length+1, nb_features):
 			seq = pad(seq, reference=(seq_length+1, nb_features))
-		'''
-		print('seq shape ', seq.shape)
-		print('len batch',len(batch))
-		'''
-		
+
 	batch = np.array(batch)
-	#print('[ + ] Batch shape :', batch.shape)
 
 	batch = batch.transpose((1, 0, 2))
-	#print('[ + ] Final batch shape :', batch.shape)
 
 	return batch
 
 
 def pad(matrix, reference):
+	'''
+		Pad bacth
+	'''
 	padded = np.ones(reference)
 	padded[:matrix.shape[0], :matrix.shape[1]]
 	return padded
 
 
 def get_data_shape(file_list):
-	try:
-		data = pd.read_csv(file_list[0]).values
-	except:
-		exit('[ ! ] ERROR get_data_shape(..) : reading data failed')
-
+	'''
+		Return data shape after transposing to (seq_length, batch_size, n_features)
+	'''
+	data = pd.read_csv(file_list[0]).values
 	data = get_seq2seq_batch(data, seq_length, batch_size)
 	return data.shape
 

@@ -1,21 +1,22 @@
-Document creation : Fri Aug 25 14:08:02 2017
-Model name : demo_sae
+Document creation : Fri Aug 25 15:43:18 2017
+Model name : demo_lstm
 Model type : seq2seq
 Dataset : ./../../Ressources/Generated_files/Datasets/demo
 
 Sequence length : 20
+Sequence dimension : 5Stacked layers count : 1
 Batch size : 10
-Epochs : 100
+Epochs : 50
 
 Optimizer : RMSprop
 Learning rate : 0.0007
 
-Training time : 01:00:50
+Training time : 01:00:36
 
 ROC settings :
 	Threshold start : 0
 	Threshold end : 200.0
-	Step : 1.0
+	Step : 5.0
 
 Feature selection : 
 +-----------------------+
@@ -23,11 +24,11 @@ Feature selection :
 +-----------------------+
 | ma_43_INTAKE_PRESSURE |
 +-----------------------+
-|       ma_43_RPM       |
+|       d1_SPEED        |
 +-----------------------+
 |     std_w11_SPEED     |
 +-----------------------+
-|      ma_43_SPEED      |
+|       ma_43_RPM       |
 +-----------------------+
-|       d1_SPEED        |
+|      ma_43_SPEED      |
 +-----------------------+

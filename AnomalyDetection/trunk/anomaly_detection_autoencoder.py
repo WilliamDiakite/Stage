@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 from utils import DatasetInfo, drange
-from class_autoencoder import Autoencoder
+from class_Autoencoder import Autoencoder
 
 from feature_selection import get_best_features
 
@@ -68,9 +68,9 @@ hidden_layers = [5, 2]
 # Learning parameters
 activation		= tf.nn.tanh
 learning_rate 	= 0.001
-optimizer		= tf.train.AdamOptimizer (learning_rate)
+optimizer		= tf.train.AdamOptimizer(learning_rate)
 batch_size		= 100
-epochs 			= 700
+epochs 			= 300
 file_start 		= 0.0
 file_end   		= 1
 
@@ -127,7 +127,7 @@ def write_summary(train_loss, valid_loss, anomal_loss,
 	parameters.write('Dataset : {}\n'.format(dataset_path))
 
 	parameters.write('\nInput dimension : {}\n'.format(io_dim))
-
+	
 	parameters.write('Hidden layers : {}\n'.format(hidden_layers))
 	
 	parameters.write('Output dimension : {}\n'.format(io_dim))
@@ -135,10 +135,8 @@ def write_summary(train_loss, valid_loss, anomal_loss,
 	parameters.write('\nBatch size : {}\n'.format(batch_size))
 	parameters.write('Epochs : {}\n'.format(epochs))
 
-	parameters.write('\nOptimizer : RMSprop\n')
-	parameters.write('Learning rate decay : default (0.9)\n')
+	parameters.write('\nOptimizer : Adam\n')
 	parameters.write('Learning rate : {}\n'.format(learning_rate))
-	parameters.write('Momentum : {}\n'.format(momentum))
 
 	parameters.write('\nTraining time : {}\n'.format(time.strftime('%H:%M:%S', time.localtime(training_time))))
 
