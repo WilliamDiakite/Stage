@@ -14,7 +14,7 @@ from utils import drange
 
 
 class seq2seq(object):
-	def __init__(self, model_name, data_shape, hidden_dim, layers_stacked_count, learning_rate, lr_decay, momentum, lambda_l2_reg=0.003):
+	def __init__(self, model_name, data_shape, hidden_dim, layers_stacked_count, learning_rate, lambda_l2_reg=0.003):
 
 
 		# Backward compatibility for TensorFlow's version 0.12:
@@ -117,8 +117,7 @@ class seq2seq(object):
 
 		with tf.variable_scope('Optimizer'):
 			# Train operation
-		    self.optimizer = tf.train.RMSPropOptimizer(
-		        learning_rate, decay=lr_decay, momentum=momentum)
+		    self.optimizer = tf.train.RMSPropOptimizer(learning_rate)
 		    self.train_op = self.optimizer.minimize(self.loss)
 
 

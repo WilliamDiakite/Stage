@@ -68,8 +68,7 @@ hidden_layers = [5, 2]
 # Learning parameters
 activation		= tf.nn.tanh
 learning_rate 	= 0.001
-momentum 		= 0.95
-optimizer		= tf.train.RMSPropOptimizer(learning_rate, momentum)
+optimizer		= tf.train.AdamOptimizer (learning_rate)
 batch_size		= 100
 epochs 			= 700
 file_start 		= 0.0
@@ -128,12 +127,7 @@ def write_summary(train_loss, valid_loss, anomal_loss,
 	parameters.write('Dataset : {}\n'.format(dataset_path))
 
 	parameters.write('\nInput dimension : {}\n'.format(io_dim))
-	'''
-	hidden_layers.sort()
-	dec = hidden_layers
-	hidden_layers.reverse()
-	hidden_layers = hidden_layers + dec[1:]
-	'''
+
 	parameters.write('Hidden layers : {}\n'.format(hidden_layers))
 	
 	parameters.write('Output dimension : {}\n'.format(io_dim))

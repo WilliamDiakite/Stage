@@ -5,7 +5,7 @@ tf.set_random_seed(2016)
 np.random.seed(2016)
 
 # LSTM-autoencoder
-from LSTMAutoencoder import *
+from class_LSTMAutoencoder import *
 
 # Constants
 batch_num = 128
@@ -15,7 +15,8 @@ elem_num = 1
 iteration = 10000
 
 # placeholder list
-p_input = tf.placeholder(tf.float32, [batch_num, step_num, elem_num])
+p_input = tf.placeholder([batch_num, step_num, elem_num], dtype=tf.float32)
+print('SHAPE : ',p_input.get_shape())
 p_inputs = [tf.squeeze(t, [1]) for t in tf.split(1, step_num, p_input)]
 
 cell = tf.nn.rnn_cell.LSTMCell(hidden_num, use_peepholes=True)
@@ -37,10 +38,12 @@ with tf.Session() as sess:
     d = np.tile(d, (batch_num, 1, 1))
     random_sequences = r+d
 
+    print(random_sequences.shape)
+
     loss_val, _ = sess.run([ae.loss, ae.train], {p_input:random_sequences})
-    print "iter %d:" % (i+1), loss_val
+    print("iter %d: % ",(i+1), loss_val)
 
   input_, output_ =  sess.run([ae.input_, ae.output_], {p_input:r+d})
-  print "train result :"
-  print "input :", input_[0,:,:].flatten()
-  print "output :", output_[0,:,:].flatten()
+  print ("train result :")
+  print ("input :", input_[0,:,:].flatten())
+  print ("output :", output_[0,:,:].flatten())

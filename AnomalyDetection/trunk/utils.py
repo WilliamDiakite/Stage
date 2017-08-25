@@ -14,6 +14,8 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import LogisticRegression
 
+np.random.seed(27)
+
 
 
 def clean_dir(path):
@@ -287,9 +289,12 @@ def save_roc(fp_rate, vp_rate, filename):
 
 	line_x = [0,1]
 
+	plt.figure(figsize=(12, 6))
+
 	plt.plot(fp_rate, vp_rate, color="blue", linewidth=1.0, linestyle="-")
 	plt.plot(line_x, line_x, color="red", linewidth=1.0, linestyle="--")
 
+	plt.title('ROC Curve')
 	plt.xlabel('False positive rate')
 	plt.ylabel('True positive rate')
 	plt.axis([0, 1, 0, 1])
