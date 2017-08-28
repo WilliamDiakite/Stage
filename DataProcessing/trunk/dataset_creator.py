@@ -47,26 +47,26 @@ raw_anomalous_path 	= './../../Ressources/Raw_data/not_normal/'
 out_path = './../../Ressources/Generated_files/Datasets/'
 
 # Dataset name
-dataset_name = 'demo'
+dataset_name = 'big'
 
 # Sensor list
 #sensors = ['ACCELERATOR_POS_D', 'ACCELERATOR_POS_E', 'FUEL_INJECT_TIMING',
 #			'AMBIANT_AIR_TEMP', 'RPM', 'SPEED', 'THROTTLE_POS', 'THROTTLE_ACTUATOR']
 
-sensors = ['SPEED', 'RPM', 'INTAKE_PRESSURE']
-'''
+#sensors = ['SPEED', 'RPM', 'INTAKE_PRESSURE']
+
 sensors = ['ACCELERATOR_POS_D', 'ACCELERATOR_POS_E', 'AMBIANT_AIR_TEMP', 'CATALYST_TEMP_B1S1',   
 'COMMANDED_EGR', 'COOLANT_TEMP', 'EGR_ERROR', 'ENGINE_LOAD', 'FUEL_INJECT_TIMING',  
 'FUEL_RAIL_PRESSURE_DIRECT', 'INTAKE_PRESSURE', 'INTAKE_TEMP', 'MAF', 
 'THROTTLE_ACTUATOR', 'THROTTLE_POS', 'RPM', 'SPEED']
-'''
+
 #sensors = ['ENGINE_LOAD', 'INTAKE_PRESSURE', 'MAF', 'RPM', 'FUEL_INJECT_TIMING']
 
 
 # Window sizes in seconds(standard deviation, moving average)
 # example: [51, 101, 303]
-std_win 	= [11, 25]															
-mv_avg_win 	= [43]																																		
+std_win 	= [12, 60]															
+mv_avg_win 	= [12, 60]																																		
 
 
 #-------------------------------------------------------------------------------#

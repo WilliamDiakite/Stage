@@ -62,8 +62,6 @@ class LSTMAutoencoder(object):
 		cell = tf.nn.rnn_cell.OutputProjectionWrapper(cell, self.input_dim)
 		dec_outputs, dec_state = tf.nn.seq2seq.rnn_decoder(decoder_inputs, enc_state, cell)
 
-		# e_stop = np.array([1, 1])
-
 		# flatten the prediction and target to compute squared error loss
 		y_true = [tf.reshape(encoder_input, [-1]) for encoder_input in encoder_inputs]
 		y_pred = [tf.reshape(dec_output, [-1]) for dec_output in dec_outputs]
@@ -118,6 +116,8 @@ class LSTMAutoencoder(object):
 
 		print('[ + ] Starting training !')
 
+		skipped_files = 0
+
 		avg_train_losses = []
 		avg_valid_losses = []
 		avg_anomalous_losses = []
@@ -138,12 +138,10 @@ class LSTMAutoencoder(object):
 				# Train step
 				loss = self.train_batch(data)
 				losses.append(loss)
-
+				
+				
 			# Compute losses to display
 			if e%10 == 0:
-
-				#print('One sample time step : ', data[0,0,:])
-				#print('Prediction', self.predict_batch(data)[0,0,:])
 
 				# Computes average loss on train files
 				avg_loss = np.average(np.asarray(losses))
@@ -166,6 +164,7 @@ class LSTMAutoencoder(object):
 				# Display losses
 				print('\t[ + ] Step {}/{} \tTrain loss : {:.4f} \tValidation loss : {:.4f} \tAnomalous set loss : {:.4f}'.format(e+10, epoch, avg_loss, avg_val_loss, avg_ano_loss))
 
+		print('[ + ] Skipped files :', skipped_files)
 		return avg_train_losses, avg_valid_losses, avg_anomalous_losses
 
 

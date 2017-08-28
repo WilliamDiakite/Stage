@@ -1,0 +1,33 @@
+Document creation : lun. 28 août 2017 17:29:15 CEST
+Model name : big_lstmae3
+Model type : seq2seq
+Dataset : ./../../Ressources/Generated_files/Datasets/big
+
+Sequence length : 20
+Batch size : 10
+Epochs : 200
+
+Optimizer : RMSprop
+Learning rate : 0.0007
+
+Training time : 01:01:32
+
+ROC settings :
+	Threshold start : 0
+	Threshold end : 50.0
+	Step : 1.0
+
+Feature selection : 
++---------------------------------+
+|        Selected features        |
++---------------------------------+
+|           std_w12_RPM           |
++---------------------------------+
+|    ma_12_CATALYST_TEMP_B1S1     |
++---------------------------------+
+| ma_12_FUEL_RAIL_PRESSURE_DIRECT |
++---------------------------------+
+|          std_w12_SPEED          |
++---------------------------------+
+|     ma_12_ACCELERATOR_POS_E     |
++---------------------------------+

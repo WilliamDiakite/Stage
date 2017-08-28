@@ -21,7 +21,7 @@ from seq2seq_data_preparation import get_seq2seq_batch
 
 
 # Path to "normal" dataset
-dataset_path 	= './../../Ressources/Generated_files/Datasets/demo'
+dataset_path 	= './../../Ressources/Generated_files/Datasets/big'
 
 #------ Hyperparameters ------#
 
@@ -31,7 +31,7 @@ hidden_dim = 30
 # Learning parameters
 learning_rate = 0.0007
 
-epoch = 80
+epoch = 400
 seq_length = 20
 batch_size = 10
 #-----------------------------#
@@ -194,8 +194,16 @@ if __name__ == '__main__':
 
 	#--- Compute ROC Curve 
 	if args.user_thr:
-		end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
-		step_thr= float(input('[ ? ] Choose a threshold step : '))
+		final = 'n'
+		while(final != 'y') :
+			end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
+			step_thr= float(input('[ ? ] Choose a threshold step : '))
+			nb_points = int(end_thr / step_thr)
+			
+			print('[ ? ] ROC will have {} points.'.format(nb_points))
+			
+			final = input('[ ? ] Are you sure you want to keep these settings ? [y/n]')
+			final = final.lower()
 
 
 	false_positives, true_positives = model.get_roc(strt_thr=start_thr, 

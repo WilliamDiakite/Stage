@@ -54,7 +54,7 @@ Optimizers :
 #--- DATA PATH ---#
 
 # Path to "normal" dataset
-dataset_path 	= './../../Ressources/Generated_files/Datasets/demo'
+dataset_path 	= './../../Ressources/Generated_files/Datasets/big'
 
 # Stored models
 stored_models = './Saved_models/'
@@ -70,7 +70,7 @@ activation		= tf.nn.tanh
 learning_rate 	= 0.001
 optimizer		= tf.train.AdamOptimizer(learning_rate)
 batch_size		= 100
-epochs 			= 300
+epochs 			= 500
 file_start 		= 0.0
 file_end   		= 1
 
@@ -86,7 +86,7 @@ step_thr = 0.05
 
 
 #--- Feature selection ---#
-k_best = 5
+k_best = 50
 min_feature_importance = 0.5
 
 
@@ -192,8 +192,16 @@ if __name__ == '__main__':
 	if args.feature_select is True:
 		# Apply feature selection to get best features
 		bf = get_best_features(dataset_path, k_best, min_feature_importance)
+
+		# Automatic architecture
+		hidden_layers = []
+		hidden_layers.append(int(len(bf)/2))
+		hidden_layers.append(int(len(bf)/4))
+		hidden_layers.append(int(len(bf)/10))
 	else:
 		bf = None
+
+	
 
 
 	# Initialize a data information collector
@@ -247,11 +255,21 @@ if __name__ == '__main__':
 		plt.ylabel('log(Loss)')
 		plt.legend(loc='best')
 		plt.show()
+		
 
 	#--- Ask for ROC parameters
 	if args.user_thr:
-		end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
-		step_thr= float(input('[ ? ] Choose a threshold step : '))
+		final = 'n'
+		while(final != 'y') :
+			end_thr = float(input('[ ? ] Choose the max threshold for ROC curve : '))
+			step_thr= float(input('[ ? ] Choose a threshold step : '))
+			nb_points = int(end_thr / step_thr)
+			
+			print('[ ? ] ROC will have {} points.'.format(nb_points))
+			
+			final = input('[ ? ] Are you sure you want to keep these settings ? [y/n]')
+			final = final.lower()
+
 
 	# Compute roc curve
 	false_positives, true_positives = model.get_roc(start_thr, end_thr, step_thr, 
