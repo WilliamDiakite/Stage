@@ -28,11 +28,13 @@ def get_seq2seq_batch(data, seq_length, batch_size):
 
 	for i in range(batch_size):
 		seq = data[i*seq_length:(i+1)*seq_length,]
-		batch.append(seq)
-
-		if seq.shape != (seq_length+1, nb_features):
-			seq = pad(seq, reference=(seq_length+1, nb_features))
-				
+		
+		if seq.shape != (seq_length, nb_features):
+			seq = pad(seq, reference=(seq_length, nb_features))
+			batch.append(seq)
+		else:
+			batch.append(seq)
+	
 	batch = np.array(batch)
 	batch = batch.transpose((1, 0, 2))
 	
